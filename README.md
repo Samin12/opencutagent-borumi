@@ -214,7 +214,7 @@ After changing engine code, restart whatever started it (there is no hot reload)
 3. **Review**: click a segment to expand; flip **Keep ⇄ Cut**, or **Protect** it so nothing ever cuts it. Overrides show a *Manual* badge. The list follows the playhead; clicking a segment's time seeks Premiere.
 4. Optional extras before applying:
    - **Soft Apply** lays colored markers instead of deleting (green = suggested keeper); **Clear markers** removes only OpenCutAgent's markers.
-   - **Remove pauses longer than [ms]** also shrinks every stretch of no speech longer than your setting inside the kept speech, leaving about 0.12 s of air on each side.
+   - **Remove pauses longer than [ms]** (on by default, 250 ms) also shrinks every stretch of no speech longer than your setting inside the kept speech, leaving about 0.12 s of air on each side.
    - **Remove fillers (um, uh)** (on by default) also cuts filler words out of kept segments.
    - **Export transcript** saves the kept speech as an `.srt`.
 5. **Apply All**. Every cut point is placed in the quiet between words, refined against the recording's loudness, so a kept sentence never starts mid-word. "Remove gaps when applying" picks ripple vs lift. Large ripple applies (100+ cuts) build a **new sequence named `<sequence> - tightened`** through XML round-trip (fast, effects preserved); the original is untouched, so "undo" there is deleting the new sequence. Smaller applies edit in place and support **Undo last apply** and Cmd+Z.
