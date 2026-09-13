@@ -37,7 +37,7 @@ git clone <repo> opencutagent
 cd opencutagent/server && npm install
 ```
 
-See the README for the full install (CEP developer mode, panel symlink, `.mcp.json`).
+Or run `./install.sh` (Windows: `.\install.ps1`) from the clone: it installs the engine dependencies, turns on CEP developer mode, links the panel and writes `.mcp.json`; `--check` only reports. See the README for the manual steps.
 
 ## Running the pieces
 

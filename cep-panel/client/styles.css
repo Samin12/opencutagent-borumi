@@ -135,7 +135,6 @@ header {
 }
 .brand-mark svg { width: 12px; height: 12px; }
 
-.conn { display: flex; align-items: center; gap: var(--sp-2); color: var(--text-secondary); font-size: var(--fs-sm); }
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--wait); flex: none; }
 .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(79, 180, 119, 0.18); }
 .dot.bad { background: var(--bad); }
@@ -196,6 +195,17 @@ button.icon-btn.active { background: var(--surface-3); color: var(--accent-text)
 .pop-row select { min-width: 128px; background-color: var(--surface-2); }
 .pop-val { color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .pop-hint { color: var(--text-tertiary); font-size: var(--fs-xs); line-height: 1.5; }
+/* Health dropdown: one row per prerequisite, dot + name + version/state, and a
+   red fix line under anything missing. The header button carries a summary dot. */
+button.icon-btn .dot.mini { width: 6px; height: 6px; margin: 0 1px; box-shadow: none; }
+.health-list { display: flex; flex-direction: column; gap: var(--sp-1); }
+.health-row { display: flex; align-items: center; gap: var(--sp-2); min-height: 22px; font-size: var(--fs-base); color: var(--text-secondary); }
+.health-row .dot { box-shadow: none; }
+.health-name { flex: 1; display: flex; flex-direction: column; line-height: 1.25; color: var(--text-primary); }
+.health-note { color: var(--text-tertiary); font-size: var(--fs-xs); }
+.health-val { color: var(--text-tertiary); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.health-row .health-act { min-height: 22px; padding: 0 var(--sp-2); flex: none; }
+.health-fix { margin: -2px 0 var(--sp-1) 16px; color: var(--danger-text); font-size: var(--fs-xs); line-height: 1.4; }
 button.danger-text { color: var(--danger-text); align-self: flex-start; }
 button.danger-text:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger); color: var(--danger-text); }
 

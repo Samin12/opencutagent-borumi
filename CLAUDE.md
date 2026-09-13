@@ -2,6 +2,7 @@
 
 OpenCutAgent (formerly EditAgent; the local folder is still `editagent/`) is a Premiere Pro CEP panel + Node MCP server that lets Claude edit a video on Premiere's **live timeline**: transcribe, mark retakes/silences, cut, and generate Remotion animations onto a track. The AI judgment is always **Claude itself** (this chat via the `ppro_*` tools, a headless `claude -p` spawned by the server, or the cloud proxy). There is no other LLM.
 
+- **First time on this machine, or "make it work":** run the `/setup` skill (`.claude/skills/setup/`). It drives `install.sh` / `install.ps1 --check`, fixes the `[fix]` lines, verifies. The panel's header pulse icon (Health dropdown, `server/health.js` + the `health` RPC) shows the same prerequisites with green/red dots.
 - `docs/ARCHITECTURE.md` explains how the pieces talk and why. Read it once.
 - `docs/LESSONS.md` is the dated, full-detail history of every feature and failure (symptom, root cause, fix). **Search it before debugging anything that "used to work" or looks like a known symptom.** It is long on purpose; it is not loaded per session.
 - **When you hit a new failure and find the fix:** add a one-line rule under the matching section below, and the full story to `docs/LESSONS.md` (and to the project memory file).
@@ -23,7 +24,7 @@ Claude Code --stdio--> server/ (MCP + ws 127.0.0.1:3001 + ffmpeg/Scribe/claude -
 The panel is ONLY a ws client. Nothing works until `server/index.js` listens on 3001. It is started by (1) the panel auto-start, (2) Claude Code via `.mcp.json` (needed for Sync mode; start Claude Code first), or (3) `npm start` / `./start-opencutagent.command`. One server per machine, operating on whatever sequence is active.
 
 - Check who holds the port: `lsof -nP -iTCP:3001 -sTCP:LISTEN`. A relative `node server/index.js` command = started by hand in a terminal.
-- **"panel not connected" though the panel says Connected / "Unknown RPC method" after a code change:** a stale server (often from a SECOND Claude Code window) owns 3001 with old code. Keep ONE Claude Code window in the project, `pkill -9 -f "editagent/server/index.js"` once (does not match a hand-started server; kill that by PID), then `/mcp` reconnect `premiere`. Do not kill+probe repeatedly; every kill triggers a respawn.
+- **"panel not connected" though the panel's Health dot is green / "Unknown RPC method" after a code change:** a stale server (often from a SECOND Claude Code window) owns 3001 with old code. Keep ONE Claude Code window in the project, `pkill -9 -f "editagent/server/index.js"` once (does not match a hand-started server; kill that by PID), then `/mcp` reconnect `premiere`. Do not kill+probe repeatedly; every kill triggers a respawn.
 - **"Waiting for server…"** = no server on 3001, not a code bug. Reopen the panel or start one by hand.
 - A zombie MCP-spawned server that is alive but not listening (ppid = a `claude` process) is harmless.
 - `.mcp.json` is gitignored (template `.mcp.json.example`); this Claude Code build does NOT expand `${VAR}`, use absolute paths.
@@ -79,6 +80,7 @@ Apply ladder for big cuts: FCP7-XML round-trip (preserves effects, makes a NEW "
 - **A per-track QE razor leaves every piece after the first UNLINKED**; `move`/`end`/`remove` on a linked item touch only that item. Relink = select one V piece + its A mates, `seq.linkSelection()`. In FCP7 XML, Premiere resolves `<link>` by (mediatype, trackindex, clipindex), never by `linkclipref` alone: renumber after a split (`relinkClipitems`).
 - **`project.sequences` is ordered by sequence ID (a UUID), NOT by creation.** Never find a clone by index or "the last one"; capture `sequenceID`s before and after and diff. `deleteSequence` on a mis-picked object deletes the user's real sequence (it happened; recovery = the Auto-Save folder next to the .prproj).
 - Env vars stay `EDITAGENT_*`, localStorage `editagent.*`, `$.editagent` namespace; only user-facing names say OpenCutAgent.
+- **Self-hosted (`mode:"self"`) is the default** (`cloud.js readCloudConfig`); cloud is opt-in and its backend may not be deployed. The panel must be LINKED (symlink/junction) into the CEP extensions folder, never copied: auto-start resolves the engine from the panel's realpath. Install/update path = `install.sh` / `install.ps1` (`--check` = report only); keep their checks in step with `server/health.js`.
 
 **Headless and cloud AI**
 - `claude -p` oracle flags are non-negotiable: `--strict-mcp-config`, `--tools ""`, cwd = tmpdir, prompt on stdin, `--json-schema`, no `--bare`, `ANTHROPIC_API_KEY` deleted from env. There is **no `--max-turns`** in this CLI build; verify any flag before designing around it. `--fork-session` exists and is what makes chat rewind possible.
@@ -119,3 +121,4 @@ Apply ladder for big cuts: FCP7-XML round-trip (preserves effects, makes a NEW "
 | Animation placed at 1920x1080 in a bigger sequence | Read `sequence.frameSize` via `sequenceFrameSize()`; `renderScale` self-heals on the next version. |
 | Image pills invisible in chat | Inline display cleared instead of set. |
 | Panel-spawned AI "OAuth session expired" | `EDITAGENT_CLAUDE_CONFIG_DIR` unset; or `command claude /login` in the default dir. |
+| Health rows all "check failed" | The engine on 3001 predates the `health` RPC (stale server, usually Claude Code's). Kill it once; the panel respawns a fresh one within seconds. |

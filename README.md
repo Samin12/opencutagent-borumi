@@ -2,217 +2,251 @@
 
 Edit video on the **live Adobe Premiere Pro timeline** with Claude.
 
-OpenCutAgent is a Premiere Pro panel + local Node server that cuts your footage the way an editor does: transcribe what is said, find the dead air, the filler, the false starts and the duplicate takes, and remove them from your real sequence, undoably. The AI judgment is **Claude itself** on your Claude subscription. There is no external LLM API and no per-token AI bill.
+OpenCutAgent is a Premiere Pro panel that cuts your footage the way an editor does: transcribe what is said, find the dead air, the filler, the false starts and the duplicate takes, and remove them from your real sequence. The AI judgment is always **Claude**. There is no other model behind it.
 
-Two ways to drive it:
+You install it once, restart Premiere, and open the panel. Everything else starts by itself: the panel launches its own local engine in the background the moment it opens, and shuts it down when you close it. There is no terminal to keep open and no server to babysit.
 
-- **Panel only (default):** open the panel in Premiere and click. "Analyze w/ Claude" and "Suggest threshold" run the `claude` CLI headlessly in the background; you never type a prompt.
-- **Chat (Sync mode):** talk to Claude Code ("remove the silences", "cut the duplicate takes") and watch the marks land live in the panel via MCP tools.
+The AI runs on your own **Claude Code** login (your Claude subscription, no per-token bill). Transcription, the one paid piece, uses your own **ElevenLabs** key and is billed only for what is actually on the timeline. Nothing goes through anyone's server but yours. There is also an optional hosted mode (the **Self-hosted** switch in the panel settings turns it off) where transcription and the AI run on an OpenCutAgent account instead; this README describes the default, self-hosted setup.
 
-Two tabs, two price tags:
+One tab is free either way: **Remove Silences** measures loudness locally with ffmpeg. No key, no network, no account.
 
-- **Remove Silences** is **completely free**: it measures loudness locally with ffmpeg. No API key, no network, no cost.
-- **Retakes** needs a **paid transcription**: the timeline is transcribed once (cached forever) and Claude then judges the takes. We recommend **ElevenLabs Scribe v2** (~$0.22/hour of audio, and only the source ranges actually on your timeline are billed).
+## What it does
 
-## Features
-
-- **Remove Silences** tab (free): loudness-based dead-air removal (ffmpeg only, no transcription, no API key). Waveform with draggable threshold, live-recomputing silence zones, pacing presets, margins, and an AI threshold suggestion.
-- **Retakes** tab (paid transcription): transcript-based cleanup. Loads the timeline as indexed spoken segments; Claude marks duplicate takes, false starts and filler as Cut; you review, override, protect, then apply.
+- **Remove Silences** tab (free): loudness-based dead-air removal. Waveform with a draggable threshold, live-recomputing silence zones, pacing presets, margins, and an AI threshold suggestion.
+- **Retakes** tab: transcript-based cleanup. The timeline is transcribed once (cached forever, only the source ranges actually on the timeline are billed) and listed as spoken segments. Claude marks duplicate takes, false starts and filler as Cut; you review, override, protect, then apply.
 - **Soft Apply:** instead of deleting, lays colored markers on the timeline (one hue per retake group, green over the suggested keeper) so you can pick final takes by hand.
-- **Fast apply:** big cut lists skip in-place razoring and rebuild the tightened sequence via Premiere's own XML round-trip, so a 2-hour timeline with 2000+ cuts applies in seconds, with effects and transforms preserved.
-- **Export transcript:** saves the kept speech as a YouTube-ready `.srt`, with caption times matching the tightened video.
+- **Fast apply:** big cut lists skip in-place razoring and rebuild the tightened sequence through Premiere's own XML round-trip. A 2-hour timeline with 2000+ cuts applies in seconds, with effects and transforms preserved.
+- **Export transcript:** saves the kept speech as a YouTube-ready `.srt` whose caption times match the tightened video.
 - **Live sync:** the panel follows Premiere's playhead, highlights the segment under it, and clicking a segment seeks the timeline.
-- **Animation** tab (Claude subscription): select a run of neighboring segments and chat with a Claude agent that builds a hand-drawn [Remotion](https://www.remotion.dev) animation for exactly that part of the narration (it gets the full transcript plus word-level timing, and accepts reference images). When it finishes, the clip is rendered and placed on **V2** over the selected range automatically: as solid-canvas b-roll or as a transparent overlay (ProRes 4444 alpha). Chats, renders and sources are saved next to your `.prproj` in an "OpenCutAgent Animations" folder.
+- **Animation** tab: select a run of neighboring segments and chat with a Claude agent that builds a hand-drawn [Remotion](https://www.remotion.dev) animation for exactly that part of the narration (it gets the transcript with word-level timing and accepts reference images). The clip is rendered and placed on **V2** over the selected range automatically, as solid b-roll or as a transparent overlay (ProRes 4444 alpha). Chats, renders and sources are saved next to your `.prproj` in an "OpenCutAgent Animations" folder.
+- **Chat control (optional):** talk to Claude Code ("remove the silences", "cut the duplicate takes") and watch the marks land live in the panel through MCP tools.
 
 ## How it works
 
 ```
-Claude Code ──stdio──► MCP server (Node) ──ws 127.0.0.1──► CEP panel (in Premiere) ──evalScript──► Premiere
-             ppro_*     runs ffmpeg + Scribe                auto-reconnects                premiere.jsx
-             tools      + headless `claude -p`
+Premiere Pro
+└─ OpenCutAgent panel (cep-panel/)  ──evalScript──►  premiere.jsx (all timeline edits)
+        │ WebSocket, 127.0.0.1:3001
+        ▼
+   local engine (server/, Node)  ──►  ffmpeg, transcription, cut planning, renders
+        │                        ──►  AI: OpenCutAgent cloud  OR  your `claude` login
+        ▲ MCP (optional)
+   Claude Code chat (ppro_* tools)
 ```
 
-- The **MCP server** (`server/`) hosts a localhost WebSocket bridge for the panel, exposes the timeline as MCP tools, runs ffmpeg + ElevenLabs Scribe, computes every cut list, and spawns the headless `claude` calls for the panel's AI buttons.
-- The **CEP panel** (`cep-panel/`) runs inside Premiere and executes timeline operations via `cep-panel/host/premiere.jsx` (the only file that touches Premiere's API).
-- The **skills** (`.claude/skills/`) teach Claude the cut and silence-removal workflows; the same text drives the headless calls.
+- The **panel** is a small web page running inside Premiere. It only draws state and forwards timeline operations to `cep-panel/host/premiere.jsx`, the one file that touches Premiere's scripting API.
+- The **engine** (`server/`) does the real work: hosts the local WebSocket the panel talks to, runs ffmpeg for loudness and audio extraction, transcribes, computes every cut list, renders animations, and either calls the OpenCutAgent cloud or spawns the `claude` CLI headlessly for the AI decisions. It also exposes the timeline as MCP tools for Claude Code.
+- The **skills** (`.claude/skills/`) teach Claude the editing workflows. The same text is used by the headless calls, so both paths behave the same.
 
-Premiere's own transcript isn't readable via any API, so transcription runs on the **source media** (transcribe once, cache, map onto the timeline; a re-edit or reload never re-bills).
+### What happens when you open the panel
 
-For the full picture (reconcile, fast-apply ladder, chunked AI analysis), see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+1. The panel tries to connect to the engine on `127.0.0.1:3001` (the port is read from `~/.editagent/bridge-port` if it was ever moved).
+2. If nothing answers, the panel starts the engine itself: it resolves its own install folder back to your clone of this repo, finds Node (Homebrew, `/usr/local`, nvm, or PATH on macOS; the standard install folders on Windows) and spawns `node server/index.js`. The pulse icon in the header pulses while that happens and turns green a moment later.
+3. The engine widens its own PATH so ffmpeg, npm and `claude` are found even though Premiere launched it from the Dock, with no shell profile.
+4. Closing the panel stops the engine it started. An engine started by something else (Claude Code, or you in a terminal) is left alone: the panel only starts one after a failed connect, so there is exactly one engine per machine and it never fights an existing one.
+
+Premiere's own transcript is not readable from any API, so transcription runs on the **source media**: transcribe once, cache, map onto the timeline. A re-edit or reload never re-bills. The full picture (reconcile, the fast-apply ladder, chunked AI analysis) is in [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Prerequisites
 
-- **Adobe Premiere Pro 2024–2026** (uses CEP, which still loads on current 26.x). macOS or Windows.
-- **Node.js ≥ 18** (`node -v`).
-- **ffmpeg** on your PATH (`ffmpeg -version`):
-  - macOS: `brew install ffmpeg`
-  - Windows: `winget install Gyan.FFmpeg` (or `choco install ffmpeg`)
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** installed and signed in (`claude` on your PATH). Needed for the AI features (headless buttons and Sync mode); scanning, manual thresholds and manual keep/cut work without it.
-- **ElevenLabs API key**: **optional**, only for the transcription features (the Retakes tab, `identify_segments`, transcript-based `remove_silences`). Transcription is the one paid piece; we recommend **Scribe v2** (the default model, selectable in the panel settings). The key must have the **speech_to_text** scope. The Remove Silences tab needs **no key and costs nothing**. Get a key at https://elevenlabs.io.
+- **Adobe Premiere Pro 2024 to 2026** (CEP loads on current 26.x), macOS or Windows.
+- **Node.js 18 or newer.** The engine runs on it. The installer adds it when missing (Homebrew or winget).
+- **ffmpeg.** Loudness, audio extraction, renders. The installer adds it when missing.
+- **[Claude Code](https://claude.ai/code)** installed and signed in. Every AI feature (the AI buttons, the Animation tab, chat control) runs through it on your Claude subscription. The installer tells you if it is missing but does not install it for you.
+- **ElevenLabs API key** with the `speech_to_text` scope ([elevenlabs.io](https://elevenlabs.io)). Only for the Retakes tab (about $0.22 per hour of audio with Scribe v2). Added from the panel settings, not by hand.
 
-### Too much? Let Claude install everything
-
-If you already have **Claude Code**, you can skip the entire Install section below. Open a terminal in the folder where you want OpenCutAgent to live, run `claude`, and paste this prompt. Claude will clone the repo, install the prerequisites it can, wire up the panel and the MCP config, and verify the result:
-
-> Install OpenCutAgent on this machine so it is fully ready to use, doing every step yourself and verifying as you go. Steps:
->
-> 1. Clone https://github.com/leonardogrig/opencutagent.git into the current directory (skip if already cloned here) and run `npm install` inside its `server/` folder.
-> 2. Check prerequisites: Node.js >= 18 and ffmpeg on PATH. If ffmpeg is missing, install it (macOS: `brew install ffmpeg`; Windows: `winget install Gyan.FFmpeg`). If Node is missing or too old, tell me how to install it and stop.
-> 3. Enable Adobe CEP developer mode for CSXS.11 and CSXS.12 (macOS: `defaults write com.adobe.CSXS.<n> PlayerDebugMode 1`; Windows: the HKCU `Software\Adobe\CSXS.<n>` `PlayerDebugMode=1` registry values).
-> 4. Install the panel: symlink (macOS) or junction/copy (Windows) the repo's `cep-panel` folder to the user CEP extensions folder as `com.opencutagent.panel` (macOS: `~/Library/Application Support/Adobe/CEP/extensions/`; Windows: `%APPDATA%\Adobe\CEP\extensions\`). Replace any stale link at that name.
-> 5. Create `.env` from `.env.example` if it doesn't exist. Don't put any API key in it; I can add my ElevenLabs key later from the panel's gear menu.
-> 6. Create `.mcp.json` from `.mcp.json.example`, setting the server path to the ABSOLUTE path of this clone's `server/index.js` (forward slashes on Windows; no `${VAR}` expansion).
-> 7. Verify: run `npm run check` and `npm test` in `server/`, and confirm the extensions link resolves to the repo's `cep-panel`.
-> 8. Finish with a short report of what was installed, anything you could not do, and my two next steps: restart Premiere and open Window > Extensions > OpenCutAgent (the panel auto-starts the server), and optionally add an ElevenLabs key in the panel settings to enable the Retakes tab.
->
-> Ask before anything destructive; everything else, just do.
-
-When it finishes, restart Premiere and open **Window ▸ Extensions ▸ OpenCutAgent**. Done — the manual steps below are the same thing, spelled out.
+Scanning audio, manual thresholds, manual keep/cut and every apply path work with nothing but Node and ffmpeg.
 
 ## Install
 
-Replace `/path/to/opencutagent` (or `C:\path\to\opencutagent`) with wherever you cloned the repo.
+Nothing is compiled. The panel is a folder Premiere loads straight from your clone, and the engine is a Node program the panel starts by itself. Installing means: get the clone, install two npm dependencies, turn on Premiere's developer mode (it only loads unsigned panels with it on), and link the panel folder into Premiere's extensions folder. The install script does all of it and prints a check-by-check report. Pick one of three ways in.
 
-### 1. Clone + install server dependencies
+### A. One line (macOS or Windows)
+
+**macOS** (Terminal):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/leonardogrig/opencutagent/main/install.sh | bash
+```
+
+**Windows** (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/leonardogrig/opencutagent/main/install.ps1 | iex
+```
+
+The script clones the repo into `~/OpenCutAgent` (set `OPENCUTAGENT_DIR` to choose another folder), installs Node and ffmpeg if they are missing (Homebrew on macOS, winget on Windows, no admin rights needed), runs `npm install` for the engine, turns on developer mode, links the panel, and writes `.mcp.json`. It ends with either "All set" or a list of `[fix]` lines that name the exact command to run. Run it again any time; it only redoes what changed, so it is also the updater after a `git pull`.
+
+### B. Let Claude do it
+
+If you already use Claude Code, clone the repo, open Claude Code inside it and type `/setup`:
 
 ```bash
 git clone https://github.com/leonardogrig/opencutagent.git
-cd opencutagent/server
-npm install
-```
-
-### 2. API key (optional)
-
-```bash
-cd ..                  # back to the opencutagent root
-cp .env.example .env   # Windows: copy .env.example .env
-```
-
-Edit `.env` and set `ELEVENLABS_API_KEY=...` **only if** you want the transcription features. `.env` also holds optional knobs (port, cache dir, AI model/effort defaults, fast-apply thresholds), all documented inline.
-
-### 3. Enable CEP developer mode + install the panel
-
-Premiere only loads **unsigned** dev panels with developer mode on (CEP 11 = Premiere 2024, CEP 12 = 2025/2026).
-
-**macOS**
-
-```bash
-defaults write com.adobe.CSXS.11 PlayerDebugMode 1
-defaults write com.adobe.CSXS.12 PlayerDebugMode 1
-
-# link the panel into Premiere's extensions folder
-mkdir -p ~/Library/Application\ Support/Adobe/CEP/extensions
-ln -s /path/to/opencutagent/cep-panel \
-      ~/Library/Application\ Support/Adobe/CEP/extensions/com.opencutagent.panel
-```
-
-**Windows** (PowerShell)
-
-```powershell
-reg add HKCU\Software\Adobe\CSXS.11 /v PlayerDebugMode /t REG_SZ /d 1 /f
-reg add HKCU\Software\Adobe\CSXS.12 /v PlayerDebugMode /t REG_SZ /d 1 /f
-
-# junction the panel folder (run PowerShell as Administrator)
-New-Item -ItemType Junction `
-  -Path "$env:APPDATA\Adobe\CEP\extensions\com.opencutagent.panel" `
-  -Target "C:\path\to\opencutagent\cep-panel"
-```
-
-No admin rights? Just **copy** `cep-panel` to `%APPDATA%\Adobe\CEP\extensions\com.opencutagent.panel` instead of the junction (but re-copy after any panel update).
-
-Restart Premiere, then open the panel: **Window ▸ Extensions ▸ OpenCutAgent**. That's enough for panel-only use: the panel **auto-starts the server** when you open it.
-
-### 4. Point Claude Code at the server (for Sync / chat use)
-
-Copy the example MCP config and set the path to your clone:
-
-```bash
-cp .mcp.json.example .mcp.json
-```
-
-```json
-{
-  "mcpServers": {
-    "premiere": {
-      "type": "stdio",
-      "command": "node",
-      "args": ["/absolute/path/to/opencutagent/server/index.js"],
-      "timeout": 600000
-    }
-  }
-}
-```
-
-> Use an **absolute** path; Claude Code does not expand `${VAR}`s in `.mcp.json`. On Windows use a forward-slashed absolute path, e.g. `C:/path/to/opencutagent/server/index.js`.
-
-Then launch Claude Code **from the project folder** so it loads `.mcp.json` and the bundled skills, and approve the server when prompted:
-
-```bash
-cd /path/to/opencutagent
+cd opencutagent
 claude
 ```
 
-*(Alternative: register globally with `claude mcp add premiere --scope user -- node /path/to/opencutagent/server/index.js`, and symlink the skills into `~/.claude/skills/` so they load from any folder.)*
+The `setup` skill runs the same script in check mode, installs what it reports missing (asking before anything system-wide), runs it for real, verifies with the test suite, and tells you what to click next. The same skill is the troubleshooter later: "the panel is not showing" or "ffmpeg is red in Health" and it works from the script's report instead of guessing.
 
-### Who starts the server (one server, three launchers)
+### C. By hand
 
-The panel is only a WebSocket client; everything runs through one local server (`server/index.js`, port 3001). It can start three collision-safe ways:
+Replace `/path/to/opencutagent` (or `C:\path\to\opencutagent`) with wherever you clone the repo.
 
-1. **Opening the panel auto-starts it** (the panel spawns it only after a failed connect, so it never fights an existing one). This is all you need for panel-only use.
-2. **Claude Code spawns it** via `.mcp.json` when a session is open in the project. For Sync mode, start the `claude` session **first** so its server owns the port; the panel then connects to it.
-3. **Manually:** `npm start` from the repo root (stop with `npm stop`), or double-click `start-opencutagent.command` on macOS.
+1. **Clone and install the engine's dependencies**
 
-To smoke-test the server by itself (no Premiere needed):
+   ```bash
+   git clone https://github.com/leonardogrig/opencutagent.git
+   cd opencutagent/server
+   npm install
+   ```
 
-```bash
-cd /path/to/opencutagent/server
-npm run smoke   # boots the server, lists the tools over stdio
-```
+   This is the step people forget. Without it the engine cannot start and the panel sits on "Starting server…" forever.
 
-After changing server code, restart the Claude session (or `/mcp` → reconnect `premiere`); there is no hot-reload.
+2. **Turn on Premiere's developer mode for panels** (once; CSXS.11 covers Premiere 2024, CSXS.12 covers 2025 and 2026)
 
-## Use it: Remove Silences (loudness-based, no key)
+   macOS:
 
-1. Open a project + sequence, open the panel, click **Scan Audio**. The server measures each clip's loudness (ffmpeg, cached per source) and the panel draws the waveform with silences highlighted and a draggable **Noise Threshold** line.
-2. **Tune live**: drag the threshold, edit the ms fields (min silence length, keep-talk, margins), or pick a pacing preset. The zones recompute instantly. The meter is normalized to the recording's own peak, so threshold values behave like AutoCut/TimeBolt's.
-3. **Suggest threshold** (optional): Claude reads the measured loudness stats and picks a threshold that fits the recording (headless by default; via your chat in Sync mode).
+   ```bash
+   defaults write com.adobe.CSXS.11 PlayerDebugMode 1
+   defaults write com.adobe.CSXS.12 PlayerDebugMode 1
+   ```
+
+   Windows (PowerShell):
+
+   ```powershell
+   reg add HKCU\Software\Adobe\CSXS.11 /v PlayerDebugMode /t REG_SZ /d 1 /f
+   reg add HKCU\Software\Adobe\CSXS.12 /v PlayerDebugMode /t REG_SZ /d 1 /f
+   ```
+
+3. **Link the panel into Premiere's extensions folder.** Link, do not copy: the panel finds the engine by walking up from its own folder to the clone. A copy cannot find it.
+
+   macOS:
+
+   ```bash
+   mkdir -p ~/Library/Application\ Support/Adobe/CEP/extensions
+   ln -s /path/to/opencutagent/cep-panel \
+         ~/Library/Application\ Support/Adobe/CEP/extensions/com.opencutagent.panel
+   ```
+
+   Windows (PowerShell; a junction needs no admin rights):
+
+   ```powershell
+   New-Item -ItemType Junction `
+     -Path "$env:APPDATA\Adobe\CEP\extensions\com.opencutagent.panel" `
+     -Target "C:\path\to\opencutagent\cep-panel"
+   ```
+
+### Then open it
+
+Restart Premiere, open a project and a sequence, then **Window ▸ Extensions ▸ OpenCutAgent**. The panel starts its engine on its own. Click the **pulse icon** in the panel header: the Health dropdown lists everything the panel needs (engine, Premiere host script, Node, ffmpeg, Claude Code) with a green or red dot each, and a red row says what to do. If no ElevenLabs key is set yet, an extra row offers to add one. Then click **Scan Audio** in the Remove Silences tab: the waveform appears within a few seconds.
+
+## First run: keys and settings
+
+Open the panel settings (the gear icon in the header).
+
+- **ElevenLabs**: click **Add API key** and paste your key. The panel stores it in the repo's `.env` for you. Only needed for the Retakes tab; the first time you click Transcribe without a key, this dialog opens on its own.
+- **Model / Effort**: which Claude model the AI buttons use. The list comes live from your `claude` CLI, so it always shows what your subscription offers.
+- **Sync with Claude Code**: off by default. Leave it off unless you want chat control (next section).
+- **Self-hosted**: on by default, and what this README describes. Turning it off switches the AI and transcription to a hosted OpenCutAgent account (Google sign-in from the panel). The mode is stored per machine in `~/.opencutagent/cloud.json`, not in the repo. Cloud mode still needs the local engine, Node and ffmpeg, and the Animation tab still needs the `claude` CLI installed.
+
+## Optional: drive it from a Claude Code chat (Sync mode)
+
+Self-hosted only. Instead of clicking the AI buttons you talk to Claude Code, and Claude edits the timeline through MCP tools while the panel shows the marks live.
+
+1. Copy the MCP config and point it at your clone:
+
+   ```bash
+   cd /path/to/opencutagent
+   cp .mcp.json.example .mcp.json     # Windows: copy .mcp.json.example .mcp.json
+   ```
+
+   ```json
+   {
+     "mcpServers": {
+       "premiere": {
+         "type": "stdio",
+         "command": "node",
+         "args": ["/absolute/path/to/opencutagent/server/index.js"],
+         "timeout": 600000
+       }
+     }
+   }
+   ```
+
+   Use an **absolute** path; Claude Code does not expand `${VAR}` in `.mcp.json`. On Windows write it with forward slashes, for example `C:/path/to/opencutagent/server/index.js`.
+
+2. Start Claude Code **from the repo folder** so it loads `.mcp.json` and the bundled skills, and approve the `premiere` server when asked:
+
+   ```bash
+   cd /path/to/opencutagent
+   claude
+   ```
+
+3. Open the panel in Premiere (or leave it open; it reconnects on its own) and turn **Sync with Claude Code** on in the settings. Start the Claude Code session before the panel when you can: its engine then owns the port and the panel simply connects to it instead of starting a second one.
+
+Then ask: *"what's on the timeline?"*, *"remove the silences"*, *"analyze the retakes and cut the duplicates"*, *"trim V1.2 so it ends at 00:00:18:00"*. The `premiere-edit` skill runs a read, propose, confirm, execute, verify loop and previews destructive cuts before applying.
+
+Prefer it available from any folder? Register it globally with `claude mcp add premiere --scope user -- node /path/to/opencutagent/server/index.js` and symlink the skills into `~/.claude/skills/`.
+
+### Who starts the engine
+
+One engine per machine, listening on port 3001 (or `PREMIERE_BRIDGE_PORT`), operating on whatever sequence is active in Premiere. Three ways to start it, all collision-safe:
+
+1. **Opening the panel** starts it when nothing is listening. This is the normal case.
+2. **Claude Code** starts it through `.mcp.json` when a session opens in the repo (Sync mode).
+3. **By hand:** `npm start` from the repo root (`npm stop` ends it), or double-click `start-opencutagent.command` on macOS. Useful when you want to see the engine's log.
+
+After changing engine code, restart whatever started it (there is no hot reload): reopen the panel, or in Claude Code run `/mcp` and reconnect `premiere`.
+
+## Use it: Remove Silences (loudness-based, free)
+
+1. Open a project and a sequence, open the panel, click **Scan Audio**. The engine measures each clip's loudness (ffmpeg, cached per source) and the panel draws the waveform with silences highlighted and a draggable **Noise Threshold** line.
+2. **Tune live**: drag the threshold, edit the ms fields (minimum silence length, keep-talk, margins), or pick a pacing preset. The zones recompute instantly. The meter is normalized to the recording's own peak, so threshold values behave the way you expect from other silence tools.
+3. **Suggest threshold** (optional): Claude reads the measured loudness stats and picks a threshold that fits the recording.
 4. Pick the **Silence Management** mode: *Remove* (ripple, close gaps), *Keep gaps* (lift), *Mute*, or *Keep*.
 5. **Remove Silences**. Undo restores the timeline.
 
 ## Use it: Retakes (transcript-based)
 
-1. **Transcribe**: transcribes the timeline (ElevenLabs Scribe, cached; only the source ranges actually used on the timeline are billed) and lists indexed spoken segments, each starting as Keep. Clips with no speech are auto-marked Cut.
-2. **Analyze w/ Claude**: Claude reads the transcript and marks duplicate takes, false starts and filler as Cut (keeping the most complete pass of each beat). Long timelines are analyzed in overlapping chunks for reliability.
+1. **Transcribe**: transcribes the timeline (cached; only the source ranges actually used on the timeline are billed) and lists indexed spoken segments, each starting as Keep. Stretches with no speech are auto-marked Cut. A project you already transcribed reloads from cache for free the next time you open the panel.
+2. **Analyze w/ Claude**: Claude reads the transcript and marks duplicate takes, false starts and filler as Cut, keeping the most complete pass of each beat. Long timelines are analyzed in overlapping chunks for reliability.
 3. **Review**: click a segment to expand; flip **Keep ⇄ Cut**, or **Protect** it so nothing ever cuts it. Overrides show a *Manual* badge. The list follows the playhead; clicking a segment's time seeks Premiere.
 4. Optional extras before applying:
    - **Soft Apply** lays colored markers instead of deleting (green = suggested keeper); **Clear markers** removes only OpenCutAgent's markers.
-   - **Remove pauses longer than [ms]** also shrinks every stretch of no speech longer than your setting inside the kept speech (between words too), leaving about 0.12 s of air on each side.
+   - **Remove pauses longer than [ms]** also shrinks every stretch of no speech longer than your setting inside the kept speech, leaving about 0.12 s of air on each side.
    - **Remove fillers (um, uh)** (on by default) also cuts filler words out of kept segments.
    - **Export transcript** saves the kept speech as an `.srt`.
-5. **Apply All**. Every cut point is placed in the quiet between words, refined against the recording's loudness with a margin of air kept around the kept speech, so a kept sentence never starts mid-word. "Remove gaps when applying" picks ripple vs lift. Large ripple applies (100+ cuts) build a **new sequence named `<sequence> - tightened`** via XML round-trip (fast, effects preserved); the original sequence is untouched, so "undo" there is just deleting the new one. Smaller applies edit in place and support **Undo last apply** / Cmd+Z.
+5. **Apply All**. Every cut point is placed in the quiet between words, refined against the recording's loudness, so a kept sentence never starts mid-word. "Remove gaps when applying" picks ripple vs lift. Large ripple applies (100+ cuts) build a **new sequence named `<sequence> - tightened`** through XML round-trip (fast, effects preserved); the original is untouched, so "undo" there is deleting the new sequence. Smaller applies edit in place and support **Undo last apply** and Cmd+Z.
 
-Or just ask in chat (Sync mode): *"analyze the retakes on my timeline and cut the duplicates"*, *"remove the silences"*, *"what's on the timeline?"*, *"trim V1.2 so it ends at 00:00:18:00"*. The `premiere-edit` skill runs a read → propose → confirm → execute → verify loop and previews destructive cuts before applying.
+## Use it: Animation
 
-## The AI: Claude, two transports
+1. Run **Transcribe** in the Retakes tab, then in the Animation tab pick a run of neighboring segments to animate over. Or start a **raw animation** with no transcript; it lands at the playhead with the length you choose.
+2. Choose a style and an output size, describe what you want, attach reference images if you like, and send. The agent builds the animation, renders it and places it on V2 over the selected range. You can keep chatting to refine it; every render gets a new versioned file.
 
-The "Sync with Claude Code" toggle (in the panel's ✦ settings popover) picks who runs the analysis:
+The first animation on a machine takes a few extra minutes: the engine copies the Remotion kit to `~/.opencutagent/animation-kit`, runs `npm install` there, and Remotion downloads its own headless Chromium (a few hundred MB). The panel reports the progress; later runs skip all of it.
 
-- **OFF (default, headless):** the AI buttons spawn `claude -p` in the background on your Claude subscription (keychain login; a stray `ANTHROPIC_API_KEY` is scrubbed so nothing silently bills). Model + effort come from the settings popover.
-- **ON (Sync):** the buttons defer to your open Claude Code chat, where Claude drives the `ppro_*` MCP tools and pushes results into the panel live.
+## The AI: one judge, two transports
 
-Both modes share the same server state and render identically. The headless call is a pure judgment oracle: it gets segment data and returns JSON decisions; it cannot touch Premiere, your files, or the network.
+The AI decisions (which take to keep, what threshold counts as silence, what to draw) are always made by Claude. The settings pick how the call is made:
+
+- **Headless (default):** the AI buttons spawn `claude -p` in the background on your Claude subscription. The call is a pure judgment oracle: segment data in, JSON decision out, with no tools and no access to Premiere, your files or the network. A stray `ANTHROPIC_API_KEY` in your environment is scrubbed so nothing silently bills per token.
+- **Sync:** the buttons defer to your open Claude Code chat, where Claude drives the `ppro_*` tools and pushes results into the panel live.
+- **Cloud (Self-hosted switch off):** the engine sends the segment data to the OpenCutAgent service with your account token and gets JSON decisions back. The Animation agent still runs locally through the `claude` CLI but bills through the account.
+
+All three write the same engine state and render identically in the panel.
 
 ## MCP tools
 
 | Tool | What it does |
 |---|---|
 | `ppro_get_timeline_state` | Read the sequence: clips (ids like `V1.2`), source paths, timecodes, gaps, `revision`. |
-| `ppro_identify_segments` | Transcribe a clip's source (Scribe, cached) → phrases / silences / fillers at timeline timecodes. |
+| `ppro_identify_segments` | Transcribe a clip's source (cached) into phrases / silences / fillers at timeline timecodes. |
 | `ppro_trim_clip` | Set absolute new edges for one clip (idempotent). |
 | `ppro_remove_gaps` | Ripple-close empty gaps. |
-| `ppro_remove_silences` | Transcribe → cut list (silences + fillers) → ripple-delete. Use `dry_run: true` first. |
-| `ppro_analyze_audio_levels` | Measure timeline loudness (ffmpeg, no transcription) → noise-floor/speech stats + suggested threshold. |
-| `ppro_remove_silences_by_level` | Loudness-based silence removal from chat: threshold → cut list → ripple/lift/mute. `dry_run` first. |
+| `ppro_remove_silences` | Transcribe, build a cut list (silences + fillers), ripple-delete. Use `dry_run: true` first. |
+| `ppro_analyze_audio_levels` | Measure timeline loudness (ffmpeg, no transcription): noise-floor/speech stats + suggested threshold. |
+| `ppro_remove_silences_by_level` | Loudness-based silence removal from chat: threshold, cut list, ripple/lift/mute. `dry_run` first. |
 | `ppro_get_retake_segments` | Transcribe into indexed segments for Claude to analyze for retakes/duplicates. |
 | `ppro_mark_retakes` | Record keep/cut decisions; pushes them live to the panel. |
 | `ppro_apply_retakes` | Apply the current marks (ripple/lift-delete the Cut segments). |
@@ -222,31 +256,41 @@ Both modes share the same server state and render identically. The headless call
 
 ```bash
 cd /path/to/opencutagent/server
-npm run check     # syntax-check every module
+npm run check     # parses every module and flags missing imports
 npm test          # unit + feature + smoke tests (no Premiere or API key needed)
-npm run smoke     # start the server + list tools over stdio
+npm run smoke     # boots the engine and lists its MCP tools over stdio
 ```
 
-Then open the panel (it should show **Connected**) and click **Scan Audio**, or ask Claude Code "what's on the timeline?".
+Then open the panel: the pulse icon in the header should be green, and its Health dropdown all green. Click **Scan Audio**.
+
+From a terminal, `./install.sh --check` (Windows: `.\install.ps1 -Check`) prints the same prerequisites plus the install state (developer mode, panel link, engine dependencies) without changing anything.
 
 ## Troubleshooting
 
-- **Panel says "Waiting for server…".** Nothing is listening on the port. Reopen the panel (it auto-starts the server), run `node server/index.js` yourself, or open a `claude` session in the project. If auto-start says "Node not found", install Node or start the server manually once.
-- **Panel not in the Extensions menu.** macOS: re-check the `defaults write … PlayerDebugMode 1` commands and that the symlink points at `cep-panel/`. Windows: re-check the `CSXS.11`/`CSXS.12` registry keys and the junction/copy at `%APPDATA%\Adobe\CEP\extensions\com.opencutagent.panel`. Restart Premiere.
-- **"Unknown RPC method …" after updating the code.** A server running the old code still owns the port (commonly from a second Claude Code window in the project). Keep one window, then `/mcp` → reconnect `premiere` (or restart the session). If a stray server lingers: find it with `lsof -nP -iTCP:3001 -sTCP:LISTEN` (Windows: `netstat -ano | findstr :3001`) and kill that PID.
-- **"EvalScript error."** `premiere.jsx` didn't load; close and reopen the OpenCutAgent panel.
-- **Port 3001 busy.** Set `PREMIERE_BRIDGE_PORT` in `.env`; the panel auto-reads the negotiated port from `~/.editagent/bridge-port`.
-- **Transcription fails / Retakes tab errors.** Confirm `ELEVENLABS_API_KEY` is set, has the **speech_to_text** scope, and `ffmpeg -version` works. (The Remove Silences tab needs neither a key nor network.)
-- **A "Translation Report" alert during a big apply.** Benign: Premiere logs source-interpretation entries it re-derives on import. The report file lands in `.cache/rebuild/` if you want to read it.
+Start with the **pulse icon** in the panel header (the Health dropdown) or `./install.sh --check`: both show what is missing and the fix. Or open Claude Code in the repo and type `/setup`. The usual suspects:
+
+- **The pulse icon keeps pulsing, or the Engine row says "Waiting for server".** The engine is being started but crashes at boot. Almost always `npm install` was never run in `server/`. Run `node server/index.js` in a terminal from the repo root to see the real error, fix it, then reopen the panel.
+- **"Server not found. Run: node server/index.js".** The panel could not find `server/index.js` next to its own folder, which happens when `cep-panel` was **copied** into the extensions folder instead of linked. Replace the copy with a symlink or junction (Install step 3), or start the engine by hand each time.
+- **"Node not found".** Install Node ([nodejs.org](https://nodejs.org) or `brew install node`) and reopen the panel. The panel looks in the Homebrew, `/usr/local`, nvm and standard Windows locations, then on PATH.
+- **"Not in Premiere".** You opened `index.html` in a normal browser. That is fine for looking at the UI, but the panel only works inside Premiere.
+- **Panel not in the Extensions menu.** Re-check the developer-mode commands (step 2) and that the link points at `cep-panel/`. Restart Premiere.
+- **"You're in cloud mode but not signed in" or "Couldn't reach the OpenCutAgent cloud".** The Self-hosted switch was turned off. Open the settings and turn it back on (or sign in, if you have a hosted account).
+- **"Unknown RPC method …" after updating the code.** An engine running the old code still owns the port, usually one started by a second Claude Code window in the repo. Keep one window, then `/mcp` and reconnect `premiere`, or restart the session. A stray engine can be found with `lsof -nP -iTCP:3001 -sTCP:LISTEN` (Windows: `netstat -ano | findstr :3001`) and killed by PID.
+- **"EvalScript error."** `premiere.jsx` did not load; close and reopen the panel.
+- **Port 3001 busy.** Set `PREMIERE_BRIDGE_PORT` in `.env`; the panel reads the negotiated port from `~/.editagent/bridge-port`.
+- **ffmpeg not found although it is installed.** Set `FFMPEG_BIN` to its full path in the settings' Advanced section (or in `.env`).
+- **Transcription fails in Self-hosted mode.** Confirm the ElevenLabs key is set and has the **speech_to_text** scope. The Remove Silences tab needs neither a key nor network.
+- **AI buttons say "OAuth session expired" in Self-hosted mode.** The engine is using a different Claude login folder than the one you signed in to. Run `claude` in a terminal and type `/login`, or set `EDITAGENT_CLAUDE_CONFIG_DIR` in the Advanced settings to the folder you use.
+- **A "Translation Report" alert during a big apply.** Benign: Premiere logs source-interpretation entries it re-derives on import. The report lands in `.cache/rebuild/` if you want to read it.
 
 ## Good to know
 
 OpenCutAgent is built for the common case: talking-head footage on a normal A/V timeline. Two automatic behaviors worth knowing about:
 
-- **Big applies build a new sequence.** Large ripple applies rebuild the tightened cut via Premiere's own XML round-trip (seconds instead of minutes, with your effects and transforms preserved); the original sequence is left untouched as a backup.
-- **The fast path steps aside when it must.** Timelines with titles/graphics or speed-changed clips are applied by the (slower) in-place razor path instead. Everything still applies either way.
+- **Big applies build a new sequence.** Large ripple applies rebuild the tightened cut through Premiere's own XML round-trip (seconds instead of minutes, effects and transforms preserved); the original sequence is left untouched as a backup.
+- **The fast path steps aside when it must.** Timelines with titles/graphics or speed-changed clips are applied by the slower in-place razor path instead. Everything still applies either way.
 
-The transcription engine is pluggable (Scribe v2 today); the engine interface in `server/transcription/transcribe.js` accepts a Deepgram/Whisper drop-in.
+The transcription engine is pluggable (ElevenLabs Scribe v2 today); the engine interface in `server/transcription/transcribe.js` accepts a Deepgram/Whisper drop-in.
 
 ## Before you rely on it: disclaimers, data, and third-party licenses
 
@@ -261,16 +305,16 @@ The transcription engine is pluggable (Scribe v2 today); the engine interface in
 | Mode | What is sent | To whom |
 | --- | --- | --- |
 | Self-hosted (own keys) | Audio of the timeline sections you transcribe; transcript text and your prompts | Directly to *your* ElevenLabs account and *your* Claude login. Nothing reaches the author. |
-| Cloud (Pro) | The same audio and text | The OpenCutAgent proxy, then onward to its transcription and AI providers. See the hosted [Privacy Policy](https://opencutagent.com/privacy) and [Terms](https://opencutagent.com/terms). |
+| Cloud | The same audio and text | The OpenCutAgent service, then onward to its transcription and AI providers. See the hosted [Privacy Policy](https://opencutagent.com/privacy) and [Terms](https://opencutagent.com/terms). |
 
-Transcripts and audio extracts are cached on your own disk under `.cache/`. Clear them any time from the panel's gear menu (Storage, then Clear cache).
+Transcripts and audio extracts are cached on your own disk under `.cache/`. Clear them any time from the panel's settings (Storage, then Clear cache).
 
 **Third-party licenses are your responsibility.**
 
 - **Adobe Premiere Pro**: you need your own Adobe license. OpenCutAgent is an independent project, not affiliated with, endorsed by or sponsored by Adobe. Adobe and Premiere Pro are trademarks of Adobe Inc.
 - **Remotion** (the Animation tab renders locally with it): free for individuals, non-profits and companies of three people or fewer. **Larger for-profit companies need their own Remotion license.** That agreement is between you and Remotion; it is not granted by this project and no fee here covers it. See [remotion.dev/docs/license](https://www.remotion.dev/docs/license).
 - **FFmpeg**: used for audio analysis and encoding under its own open-source license.
-- **ElevenLabs and Anthropic**: in self-hosted mode you use your own accounts, under their terms.
+- **ElevenLabs and Anthropic**: in Self-hosted mode you use your own accounts, under their terms.
 - Other names (Claude, Anthropic, ElevenLabs, OpenRouter, Remotion, n8n) are trademarks of their respective owners and are used only to describe compatibility.
 
 **The animation assistant runs a coding agent on your machine.** It writes and runs code in its own workspace (`~/.opencutagent/animation-kit`) to build each animation. Only enable it on a machine where that is acceptable to you.
@@ -279,6 +323,7 @@ Transcripts and audio extracts are cached on your own disk under `.cache/`. Clea
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md): how the pieces talk, the fast-apply ladder, the design rules.
 - [CONTRIBUTING.md](CONTRIBUTING.md): dev setup, tests, reload matrix, platform gotchas.
+- `install.sh` / `install.ps1`: the installer and updater; `--check` / `-Check` reports without changing anything. `.claude/skills/setup/` is the Claude Code skill that drives it.
 - [cep-panel/DESIGN.md](cep-panel/DESIGN.md): the panel's design system.
 
 ## License

@@ -34,14 +34,16 @@ export class CloudError extends Error {
 
 /* ------------------------------ config ------------------------------ */
 
-/** Read cloud.json; missing/corrupt file yields defaults (mode "cloud"). */
+/** Read cloud.json; missing/corrupt file yields defaults (mode "self").
+ * Self-hosted is the default: a fresh open-source install runs on the user's
+ * own Claude login and keys with no account. Cloud is opt-in from the panel. */
 export function readCloudConfig(configPath = CONFIG_PATH) {
-  const def = { mode: "cloud", token: null, email: null, plan: null };
+  const def = { mode: "self", token: null, email: null, plan: null };
   try {
     if (!existsSync(configPath)) return def;
     const parsed = JSON.parse(readFileSync(configPath, "utf8"));
     return {
-      mode: parsed.mode === "self" ? "self" : "cloud",
+      mode: parsed.mode === "cloud" ? "cloud" : "self",
       token: typeof parsed.token === "string" && parsed.token ? parsed.token : null,
       email: typeof parsed.email === "string" ? parsed.email : null,
       plan: typeof parsed.plan === "string" ? parsed.plan : null,

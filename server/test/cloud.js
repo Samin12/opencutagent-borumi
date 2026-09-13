@@ -16,10 +16,10 @@ function check(label, cond, got) {
 const dir = mkdtempSync(join(tmpdir(), "editagent-cloud-"));
 const cfgPath = join(dir, "cloud.json");
 
-// defaults: no file -> cloud mode, signed out
+// defaults: no file -> self-hosted mode, signed out
 {
   const c = readCloudConfig(cfgPath);
-  check("missing file defaults to cloud mode, no token", c.mode === "cloud" && c.token === null && c.email === null, c);
+  check("missing file defaults to self-hosted mode, no token", c.mode === "self" && c.token === null && c.email === null, c);
 }
 
 // write + read round-trip
@@ -27,27 +27,27 @@ const cfgPath = join(dir, "cloud.json");
   writeCloudConfig({ token: "oca_abc", email: "a@b.c", plan: "pro" }, cfgPath);
   const c = readCloudConfig(cfgPath);
   check("token/email/plan persist", c.token === "oca_abc" && c.email === "a@b.c" && c.plan === "pro", c);
-  check("mode stays cloud after partial patch", c.mode === "cloud", c.mode);
+  check("mode stays self after partial patch", c.mode === "self", c.mode);
 }
 
 // mode switch preserves the token (self-hosted must not sign the user out)
 {
-  writeCloudConfig({ mode: "self" }, cfgPath);
-  const c = readCloudConfig(cfgPath);
-  check("self mode persists", c.mode === "self", c.mode);
-  check("token survives the mode switch", c.token === "oca_abc", c.token);
   writeCloudConfig({ mode: "cloud" }, cfgPath);
-  check("back to cloud mode", readCloudConfig(cfgPath).mode === "cloud", readCloudConfig(cfgPath));
+  const c = readCloudConfig(cfgPath);
+  check("cloud mode persists", c.mode === "cloud", c.mode);
+  check("token survives the mode switch", c.token === "oca_abc", c.token);
+  writeCloudConfig({ mode: "self" }, cfgPath);
+  check("back to self mode", readCloudConfig(cfgPath).mode === "self", readCloudConfig(cfgPath));
 }
 
-// unknown mode strings normalize to cloud; corrupt file falls back to defaults
+// unknown mode strings normalize to self; corrupt file falls back to defaults
 {
   writeFileSync(cfgPath, JSON.stringify({ mode: "banana", token: 42 }));
   const c = readCloudConfig(cfgPath);
-  check("unknown mode -> cloud, non-string token -> null", c.mode === "cloud" && c.token === null, c);
+  check("unknown mode -> self, non-string token -> null", c.mode === "self" && c.token === null, c);
   writeFileSync(cfgPath, "{not json");
   const c2 = readCloudConfig(cfgPath);
-  check("corrupt file -> defaults", c2.mode === "cloud" && c2.token === null, c2);
+  check("corrupt file -> defaults", c2.mode === "self" && c2.token === null, c2);
 }
 
 // sign-out shape: clearing token via patch

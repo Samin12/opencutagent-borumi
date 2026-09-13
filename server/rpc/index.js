@@ -15,6 +15,7 @@ import { askClaude, THRESHOLD_SCHEMA, thresholdSystem, thresholdPrompt, analyzeR
 import { readUsage, recordUsage } from "../usage.js";
 import { fmtDur, getTimeline } from "../tools/util.js";
 import { animHandlers } from "../animation/index.js";
+import { runHealthChecks } from "../health.js";
 
 // Model/effort come from the panel dropdowns; fall back to .env, then sane defaults.
 function aiModel(params) { return params.model || liveEnv("EDITAGENT_AI_MODEL") || "latest"; }
@@ -677,7 +678,7 @@ async function cloudSignOutRpc() {
   return { ok: true };
 }
 
-/** Flip between "cloud" (default) and "self" (self-hosted). */
+/** Flip between "self" (self-hosted, the default) and "cloud". */
 async function cloudSetMode(params) {
   const mode = params.mode === "self" ? "self" : "cloud";
   writeCloudConfig({ mode });
@@ -689,7 +690,12 @@ async function cloudAccount() {
   return cloudMe();
 }
 
-const HANDLERS = { ping, cancel, loadSegments, autoLoadSegments, applyDecisions, softApply, clearMarkers, exportTranscript, timelineMap, reinsertSegment, analyzeLevels, timelineTracks, applySilences, aiThreshold, aiRetakes, undoLastApply, undoStatus, cacheInfo, clearCache, usageLog, aiModels, keyStatus, setApiKey, envList, setEnv, cloudStatus, cloudLink, cloudPoll, cloudSignOut: cloudSignOutRpc, cloudSetMode, cloudAccount, ...animHandlers };
+/** Prerequisite checks for the panel's Health dropdown (see health.js). */
+async function health() {
+  return runHealthChecks();
+}
+
+const HANDLERS = { ping, cancel, loadSegments, autoLoadSegments, applyDecisions, softApply, clearMarkers, exportTranscript, timelineMap, reinsertSegment, analyzeLevels, timelineTracks, applySilences, aiThreshold, aiRetakes, undoLastApply, undoStatus, cacheInfo, clearCache, usageLog, aiModels, keyStatus, setApiKey, envList, setEnv, cloudStatus, cloudLink, cloudPoll, cloudSignOut: cloudSignOutRpc, cloudSetMode, cloudAccount, health, ...animHandlers };
 
 export function createRpcDispatcher(ctx) {
   return async (method, params, helpers) => {

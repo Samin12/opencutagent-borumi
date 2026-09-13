@@ -16,13 +16,32 @@
           OPENCUTAGENT
         </span>
         <span class="head-right">
-          <span class="conn" id="conn"><span id="dot" class="dot"></span><span id="connText">Starting…</span></span>
+          <button id="healthBtn" class="icon-btn" data-tip="Health: everything OpenCutAgent needs to work, with a green or red dot next to each item." aria-haspopup="true" aria-expanded="false">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+            <span id="healthDot" class="dot mini" aria-hidden="true"></span>
+            <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+          </button>
           <button id="aiConfigBtn" class="icon-btn" data-tip="Settings: pick the Claude model for the AI buttons, add your ElevenLabs API key, pair the panel with a Claude Code chat, or clear the cache." aria-haspopup="true" aria-expanded="false">
             <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
             <svg class="ic ic-sm" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
           </button>
         </span>
       </header>
+
+      <!-- Health: the prerequisites the panel needs, each with a green/red dot.
+           Rows are rendered by main.js (Health module) from the engine's
+           "health" RPC plus two panel-side checks (engine link, host script). -->
+      <div id="healthPop" class="pop" hidden role="dialog" aria-label="Health checks">
+        <div class="pop-sec">
+          <div class="pop-title">Health</div>
+          <div id="healthList" class="health-list"></div>
+          <div class="pop-hint" id="healthHint">Everything the panel needs to work. A red item means the features that depend on it will fail until it is fixed; reopen the panel after installing something.</div>
+          <button id="healthRecheck" class="sm">
+            <svg class="ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><polyline points="21 3 21 9 15 9"/></svg>
+            <span class="lbl">Check again</span>
+          </button>
+        </div>
+      </div>
 
       <!-- Claude + storage settings (opened from the header sparkle button). AI is only
            used by the explicit "Suggest threshold" / "Analyze w/ Claude" actions. -->

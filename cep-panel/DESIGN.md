@@ -113,10 +113,12 @@ primary buttons keep crisp dark labels (white-on-Ember is only ~3.1:1).
 - **Feedback** — slim global indeterminate `#topbar` (driven by `setBusyBar`),
   typed toasts (`success`/`error`/`info`, colored bar + icon, via `toast(msg,type)`),
   skeleton shimmer rows during transcribe (`skeletonRows()`), richer empty states,
-  pulsing connection dot. The header connection pill (`#conn`) hides in cloud
-  mode while the link is healthy (`applyConn()` in main.js: the local helper
-  server is an implementation detail there); problem states like "Waiting for
-  server…" / "Not in Premiere" always show, in both modes.
+  pulsing status dot. The header's only status indicator is the Health button
+  (pulse icon + `.dot.mini`, left of the gear): green when every prerequisite
+  is there, red when one is missing, pulsing while starting or checking. Its
+  dropdown (`#healthPop`, `.health-row` rows) names each item; connection
+  problems ("Waiting for server…", "Not in Premiere") live in its Engine row
+  and its tooltip. There is no separate "Connected" pill.
 - **Scan track picker** — `.selctl` (a compact `<span>label</span><select>` pair)
   in the Remove Silences `.viewctl`: `#silTrack` chooses WHICH audio track is
   measured. No "Auto": it defaults to **A1** (falling to the first audio track

@@ -86,20 +86,15 @@
       : null;
 
   var lastConn = { kind: "wait", text: "Starting…" };
+  // The header has ONE status indicator: the Health button's dot (Health module).
+  // Connection state feeds its Engine row and its summary dot; there is no
+  // separate "Connected" pill any more.
   function setConn(kind, text) {
     lastConn = { kind: kind, text: text };
     applyConn();
   }
-  // In cloud mode the local helper server is an implementation detail (the
-  // panel auto-starts it), so a healthy link shows nothing; problem states
-  // (Waiting for server, Not in Premiere) still surface in both modes.
-  // reflectCloud() re-applies this when the mode changes or loads.
   function applyConn() {
-    var dot = $("dot");
-    dot.className = "dot" + (lastConn.kind === "ok" ? " ok" : lastConn.kind === "bad" ? " bad" : "");
-    $("connText").textContent = lastConn.text;
-    var cloud = typeof AI !== "undefined" && AI && AI.cloudActive && AI.cloudActive();
-    $("conn").hidden = lastConn.kind === "ok" && cloud;
+    if (typeof Health !== "undefined" && Health && Health.onConn) Health.onConn();
   }
   /* ---------- UI feedback helpers (loading buttons, global busy bar, typed toast) ----------
    * Dynamic-label buttons carry a <span class="lbl"> so we can swap the label WITHOUT
@@ -257,6 +252,8 @@
       AI.refreshKey();
       // Cloud vs self-hosted mode + account state for the settings popover.
       AI.refreshCloud();
+      // Prerequisites (ffmpeg, Claude Code, key) for the Health dropdown.
+      Health.refresh();
       // A previously-transcribed project loads by itself, from cache, for free.
       Retake.autoLoad();
       // The sequence may have changed while we were offline — re-read its tracks.
@@ -443,7 +440,7 @@
    *  to the Claude Code chat (MCP). Choices persist in localStorage.
    * ================================================================ */
   var AI = (function () {
-    var st = { sync: false, model: "opus", effort: "high", modelsAsked: false, cloud: { mode: "cloud", signedIn: false, email: null, plan: null, usageText: "" } };
+    var st = { sync: false, model: "opus", effort: "high", modelsAsked: false, cloud: { mode: "self", signedIn: false, email: null, plan: null, usageText: "" } };
     var el = {};
     var confirmingClear = false;
     function load() {
@@ -774,14 +771,13 @@
         : (c.signedIn
           ? "AI, transcription and animations run on your OpenCutAgent account. Rendering and your footage stay on this machine."
           : "Sign in to run the AI features on your OpenCutAgent account: no API keys, no Claude install needed. Or turn on Self-hosted to use your own keys.");
-      applyConn(); // header "Connected" pill hides in cloud mode when healthy
     }
     function refreshCloud() {
       if (!el.cloudState) return;
       if (!connected()) { reflectCloud(); return; }
       callServer("cloudStatus", {}).then(
         function (r) {
-          st.cloud.mode = (r && r.mode) || "cloud";
+          st.cloud.mode = (r && r.mode) || "self";
           st.cloud.signedIn = !!(r && r.signedIn);
           st.cloud.email = r && r.email;
           st.cloud.plan = r && r.plan;
@@ -916,6 +912,7 @@
     }
 
     function open() {
+      if (typeof Health !== "undefined" && Health) Health.close();
       el.aiPop.hidden = false;
       el.aiConfigBtn.classList.add("active");
       el.aiConfigBtn.setAttribute("aria-expanded", "true");
@@ -938,7 +935,7 @@
        "syncRow", "elevenSec", "configSec", "sttSec", "usageSec", "advSec", "cacheHint"]
         .forEach(function (id) { el[id] = $(id); });
       load(); reflect();
-      reflectCloud(); // hide the self-hosted-only rows immediately (default mode is cloud)
+      reflectCloud(); // apply the mode-dependent rows immediately (default mode is self-hosted)
       el.syncToggle.addEventListener("change", function () { st.sync = el.syncToggle.checked; persist(); reflect(); updateAllButtons(); });
       el.aiModel.addEventListener("change", function () { st.model = el.aiModel.value; persist(); reflect(); });
       el.aiEffort.addEventListener("change", function () { st.effort = el.aiEffort.value; persist(); });
@@ -972,6 +969,7 @@
     }
     return {
       wire: wire,
+      close: close,
       // Sync (pair with a local Claude Code chat) only exists in self-hosted
       // mode; in cloud mode the buttons always run through the account.
       sync: function () { return st.sync && st.cloud.mode === "self"; },
@@ -3630,15 +3628,175 @@
     };
   })();
 
+  /* ---------- Health dropdown (header): is everything the panel needs there? ----------
+   * Five rows, nothing optional: the engine link and the host script are checked
+   * here in the panel; Node, ffmpeg and Claude Code come from the engine's
+   * "health" RPC (the ElevenLabs key is a setting, so it only appears as a
+   * "not set" row with a shortcut to the key dialog) (the engine checks them the way the real
+   * features use them, so a green dot means the feature will run). The header
+   * button carries a summary dot: red if anything required is missing. */
+  var Health = (function () {
+    var el = {};
+    var rows = {}; // id -> {label, ok:true|false|null, detail, fix, note, required}
+    var ORDER = ["engine", "host", "node", "ffmpeg", "claude", "elevenlabs"];
+    var checking = false;
+
+    function set(id, patch) {
+      var r = rows[id] || (rows[id] = { label: id, ok: null, detail: "", fix: "", note: "", required: true });
+      for (var k in patch) if (patch.hasOwnProperty(k)) r[k] = patch[k];
+      render();
+    }
+
+    function engineRow() {
+      if (connected()) return { label: "Engine", ok: true, detail: "running", fix: "", required: true };
+      if (lastConn.kind === "wait") return { label: "Engine", ok: null, detail: lastConn.text.replace(/…$/, ""), fix: "", required: true };
+      return {
+        label: "Engine", ok: false, detail: lastConn.text.replace(/…$/, ""), required: true,
+        fix: spawnDiagnosis || "Reopen the panel. If it stays red, run npm install inside the server folder, then reopen.",
+      };
+    }
+
+    // The engine is Node, so a reachable engine proves Node. Offline, look for it ourselves.
+    function nodeRowOffline() {
+      if (!nodeRequire) return { label: "Node.js", ok: null, detail: "unknown", fix: "", required: true };
+      try {
+        var fs = nodeRequire("fs"), path = nodeRequire("path");
+        var bin = resolveNodeBin(fs, path);
+        return bin ? { label: "Node.js", ok: true, detail: "found", fix: "", required: true }
+                   : { label: "Node.js", ok: false, detail: "not found", fix: "Install Node 18+ from nodejs.org, then reopen the panel.", required: true };
+      } catch (e) { return { label: "Node.js", ok: null, detail: "unknown", fix: "", required: true }; }
+    }
+
+    function checkHost() {
+      if (!cep) { set("host", { label: "Premiere", ok: false, detail: "not in Premiere", fix: "Open the panel inside Premiere Pro (Window, Extensions, OpenCutAgent).", required: true }); return; }
+      set("host", { label: "Premiere", ok: null, detail: "checking", fix: "", required: true });
+      callHostDirect("ping", {}, function (res) {
+        if (res && res.status === "OK") set("host", { ok: true, detail: "ready", fix: "" });
+        else set("host", { ok: false, detail: "host script not loaded", fix: "Close and reopen the panel." });
+      });
+    }
+
+    function refresh() {
+      set("engine", engineRow());
+      checkHost();
+      if (!connected()) {
+        set("node", nodeRowOffline());
+        set("ffmpeg", { label: "ffmpeg", ok: null, detail: "needs the engine", fix: "", required: true });
+        set("claude", { label: "Claude Code", ok: null, detail: "needs the engine", fix: "", required: true });
+        return;
+      }
+      if (checking) return;
+      checking = true;
+      ["node", "ffmpeg", "claude"].forEach(function (id) { if (rows[id]) set(id, { ok: null, detail: "checking", fix: "" }); });
+      callServer("health", {}).then(function (r) {
+        checking = false;
+        var list = (r && r.checks) || [];
+        for (var i = 0; i < list.length; i++) {
+          var c = list[i];
+          set(c.id, { label: c.label, ok: !!c.ok, detail: c.detail || "", fix: c.fix || "", note: c.note || "", required: c.required !== false });
+        }
+      }, function (err) {
+        checking = false;
+        // The usual cause: an engine running code from before this check existed
+        // (started by Claude Code or by hand). Say so instead of a bare failure.
+        var m = (err && err.message) || "";
+        var why = /Unknown RPC/i.test(m)
+          ? "The engine is running old code. Reopen the panel; if Claude Code started the engine, run /mcp there and reconnect premiere."
+          : "Could not run the checks" + (m ? ": " + m : ".");
+        ["node", "ffmpeg", "claude"].forEach(function (id) { set(id, { ok: null, detail: "check failed", fix: why }); });
+      });
+    }
+
+    function summary() {
+      var worst = "ok";
+      for (var i = 0; i < ORDER.length; i++) {
+        var r = rows[ORDER[i]];
+        if (!r || r.required === false || ORDER[i] === "elevenlabs") continue;
+        if (r.ok === false) return "bad";
+        if (r.ok === null) worst = "wait";
+      }
+      return worst;
+    }
+
+    function render() {
+      if (!el.healthList) return;
+      var kind = summary();
+      if (el.healthDot) el.healthDot.className = "dot mini" + (kind === "ok" ? " ok" : kind === "bad" ? " bad" : "");
+      if (el.healthBtn) el.healthBtn.setAttribute("data-tip", kind === "ok"
+        ? "Health: everything OpenCutAgent needs is installed and running."
+        : !connected() ? "Health: " + lastConn.text + " Click for details."
+        : kind === "bad" ? "Health: something the panel needs is missing. Click for details."
+        : "Health: still checking what the panel needs.");
+      if (el.healthPop.hidden) return; // the list only renders while open
+      var html = "", lastFix = ""; // one shared reason prints once, not under every row
+      for (var i = 0; i < ORDER.length; i++) {
+        var r = rows[ORDER[i]];
+        if (!r || r.required === false) continue;
+        // The ElevenLabs key is a setting, not something to install: it only
+        // shows up here when it is missing, with a shortcut to the key dialog.
+        if (ORDER[i] === "elevenlabs") {
+          if (r.ok !== false) continue;
+          html += '<div class="health-row"><span class="dot bad"></span><span class="health-name">' + esc(r.label)
+            + '<span class="health-note">' + esc(r.note || "Retakes transcription") + '</span></span>'
+            + '<button type="button" class="sm health-act" data-act="key">Add API key</button></div>';
+          continue;
+        }
+        var dot = "dot" + (r.ok === true ? " ok" : r.ok === false ? " bad" : "");
+        html += '<div class="health-row"><span class="' + dot + '"></span><span class="health-name">' + esc(r.label)
+          + (r.note ? '<span class="health-note">' + esc(r.note) + '</span>' : '') + '</span><span class="health-val">' + esc(r.detail) + '</span></div>';
+        if (r.ok !== true && r.fix && r.fix !== lastFix) html += '<div class="health-fix">' + esc(r.fix) + '</div>';
+        lastFix = r.ok !== true ? r.fix : "";
+      }
+      el.healthList.innerHTML = html;
+    }
+    function esc(t) { return String(t == null ? "" : t).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;"); }
+
+    function open() {
+      if (AI && AI.close) AI.close();
+      el.healthPop.hidden = false;
+      el.healthBtn.classList.add("active");
+      el.healthBtn.setAttribute("aria-expanded", "true");
+      render();
+      refresh();
+    }
+    function close() {
+      if (!el.healthPop || el.healthPop.hidden) return;
+      el.healthPop.hidden = true;
+      el.healthBtn.classList.remove("active");
+      el.healthBtn.setAttribute("aria-expanded", "false");
+    }
+    function wire() {
+      ["healthBtn", "healthDot", "healthPop", "healthList", "healthRecheck"].forEach(function (id) { el[id] = $(id); });
+      if (!el.healthBtn) return;
+      el.healthBtn.addEventListener("click", function (e) { e.stopPropagation(); if (el.healthPop.hidden) open(); else close(); });
+      el.healthRecheck.addEventListener("click", function () { checking = false; refresh(); });
+      el.healthList.addEventListener("click", function (e) {
+        var b = e.target && e.target.closest ? e.target.closest("[data-act]") : null;
+        if (!b) return;
+        if (b.getAttribute("data-act") === "key") { close(); AI.openKeyModal("Transcription for the Retakes tab needs an ElevenLabs API key."); }
+      });
+      document.addEventListener("click", function (e) { if (!el.healthPop.hidden && !el.healthPop.contains(e.target) && !el.healthBtn.contains(e.target)) close(); });
+      document.addEventListener("keydown", function (e) { if (e.key === "Escape") close(); });
+      set("engine", engineRow());
+    }
+    return {
+      wire: wire, refresh: refresh, close: close,
+      onConn: function () { if (el.healthList) { set("engine", engineRow()); if (!connected()) refresh(); } },
+      // QA hook: __editagent.Health.setRows([{id:"ffmpeg",label:"ffmpeg",ok:false,detail:"not found",fix:"brew install ffmpeg"}])
+      setRows: function (list) { for (var i = 0; i < list.length; i++) set(list[i].id, list[i]); },
+    };
+  })();
+
   /* ---------- init ---------- */
   Silence.wire();
   Retake.wire();
   Anim.wire();
   AI.wire();
+  Health.wire();
   selectTab("silence");
   connect();
   // Debug handle for browser-based QA (the gallery/QA flow drives the real panel
   // outside CEP, where there's no server to push data): lets a console inject
   // segments/config, e.g. __editagent.Retake.applyReviewUpdate([...]).
-  window.__editagent = { Retake: Retake, Silence: Silence, AI: AI, Anim: Anim, setConn: setConn };
+  window.__editagent = { Retake: Retake, Silence: Silence, AI: AI, Anim: Anim, Health: Health, setConn: setConn };
 })();
