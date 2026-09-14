@@ -98,6 +98,16 @@ fi
 if command -v claude >/dev/null 2>&1; then
   ok "Claude Code $(claude --version 2>/dev/null | head -1 | sed -E "s/ *\(Claude Code\)//")"
   note "Make sure it is signed in: run 'claude' once in a terminal (AI features run on your Claude subscription)."
+  # Optional: Claude in Chrome lets the Animation agent browse in the user's own
+  # browser. The CLI's one-time onboarding writes chrome/chrome-native-host* into
+  # the login's config dir (the same dir the engine spawns with; see health.js).
+  CFG="${CLAUDE_CONFIG_DIR:-$HOME/.claude}"
+  if [ -f "$ROOT/.env" ]; then
+    envdir="$(grep -E '^EDITAGENT_CLAUDE_CONFIG_DIR=' "$ROOT/.env" | tail -1 | cut -d= -f2- | tr -d '"'"'"'"')"
+    [ -n "$envdir" ] && CFG="$envdir"
+  fi
+  if ls "$CFG"/chrome/chrome-native-host* >/dev/null 2>&1; then ok "Claude in Chrome connected (optional: the Animation agent can browse in your Chrome)"
+  else note "Claude in Chrome is not connected (optional). To let the Animation agent look at pages in your own browser: install the Claude in Chrome extension, then run 'claude --chrome' once and press Enter at the intro."; fi
 else
   fix "Claude Code is missing (needed for every AI feature). Install: curl -fsSL https://claude.ai/install.sh | bash   then run 'claude' once to sign in, and re-run this script."
 fi

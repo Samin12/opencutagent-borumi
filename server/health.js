@@ -10,7 +10,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { ffmpegBin } from "./paths.js";
-import { resolveClaudeLaunch, claudeSpawnEnv } from "./ai.js";
+import { resolveClaudeLaunch, claudeSpawnEnv, chromeHostInstalled } from "./ai.js";
 import { liveEnv } from "./config.js";
 import { readCloudConfig } from "./cloud.js";
 
@@ -45,6 +45,8 @@ export function fixHint(tool, platform = process.platform) {
       return "Install Claude Code and sign in: https://claude.ai/code (then reopen the panel)";
     case "elevenlabs":
       return "Add your ElevenLabs key in Settings (gear icon)";
+    case "chrome":
+      return "Optional. Install the Claude in Chrome extension, then run 'claude --chrome' once in a terminal (same Claude login the panel uses) and press Enter at the intro";
     default:
       return "";
   }
@@ -98,7 +100,10 @@ async function checkClaude() {
  *   claude      self-hosted: every AI button, the Animation agent, Sync mode
  *               cloud: the Animation agent only
  *   elevenlabs  self-hosted only: the Retakes tab (transcription)
+ *   chrome      self-hosted only, OPTIONAL: the Animation agent's "your Chrome"
+ *               web access (Claude in Chrome onboarding done for this login)
  * `required:false` rows are the ones a mode makes unnecessary; the panel hides them.
+ * `optional:true` rows never turn the header dot red; a missing one shows grey.
  */
 export async function runHealthChecks() {
   const mode = readCloudConfig().mode;
@@ -106,6 +111,7 @@ export async function runHealthChecks() {
   const [ffmpeg, claude] = await Promise.all([checkFfmpeg(), checkClaude()]);
   const nodeVersion = parseVersion(process.version);
   const keySet = !!liveEnv("ELEVENLABS_API_KEY");
+  const chrome = chromeHostInstalled();
   return {
     mode,
     platform: process.platform,
@@ -114,6 +120,7 @@ export async function runHealthChecks() {
       { id: "ffmpeg", label: "ffmpeg", ...ffmpeg, required: true },
       { id: "claude", label: "Claude Code", ...claude, required: true, note: self ? "AI buttons and animations" : "animations" },
       { id: "elevenlabs", label: "ElevenLabs key", ok: keySet, detail: keySet ? "set" : "not set", fix: keySet ? "" : fixHint("elevenlabs"), required: self, note: "Retakes transcription" },
+      { id: "chrome", label: "Claude in Chrome", ok: chrome, detail: chrome ? "connected" : "not set up", fix: chrome ? "" : fixHint("chrome"), required: self, optional: true, note: "animation web browsing" },
     ],
   };
 }

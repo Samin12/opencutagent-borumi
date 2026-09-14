@@ -26,7 +26,7 @@ import {
 import { parseAnchors, anchorSamples, runAnchorCheck } from "../../animation-kit/scripts/check-anchors.mjs";
 import { execFileSync } from "node:child_process";
 import { ffmpegBin } from "../paths.js";
-import { toolDetail, buildSystemAppend } from "../animation/chat.js";
+import { toolDetail, buildSystemAppend, normalizeWebAccess, webAccessOn, effectiveWebAccess, webModeNotice, buildSpawnArgs, webAccessGuide } from "../animation/chat.js";
 import { claudeSpawnEnv } from "../ai.js";
 import { liveEnv } from "../config.js";
 import { parseFfDuration, parseRenderProgress, renderScale, isTransientRenderError, renderConcurrency } from "../animation/render.js";
@@ -490,6 +490,41 @@ check("system prompt pins the job folder + duration", sys.includes("src/jobs/ani
 check("system prompt embeds the style skill", sys.includes("<style-skill>") && sys.includes("STYLE GUIDE HERE"), null);
 check("system prompt teaches the render.json protocol", sys.includes('render.json as {"version": N'), null);
 const rawSys = buildSystemAppend({ id: "anim-r", fps: 30, width: 1920, height: 1080, durationInFrames: 90, background: "solid", style: "excalidraw", raw: true }, "S");
+/* ---------- web access (self-hosted only): two independent toggles, spawn flags, agent guidance ---------- */
+check("normalizeWebAccess reads the two booleans and defaults both off", JSON.stringify(normalizeWebAccess({ search: true, chrome: false })) === '{"search":true,"chrome":false}' && JSON.stringify(normalizeWebAccess({ search: 1, chrome: "1" })) === '{"search":true,"chrome":true}' && JSON.stringify(normalizeWebAccess(undefined)) === '{"search":false,"chrome":false}' && JSON.stringify(normalizeWebAccess("yes")) === '{"search":false,"chrome":false}', null);
+check("normalizeWebAccess still understands the legacy mode strings", normalizeWebAccess("search").search && !normalizeWebAccess("search").chrome && normalizeWebAccess("chrome").chrome, null);
+check("effectiveWebAccess: both off stays off everywhere", !webAccessOn(effectiveWebAccess({}, { cloud: true, chromeReady: true })) && effectiveWebAccess({}, { cloud: false, chromeReady: false }).reason === "", null);
+check("effectiveWebAccess: cloud mode forces both off with a reason", JSON.stringify(effectiveWebAccess({ search: true, chrome: true }, { cloud: true, chromeReady: true })) === '{"search":false,"chrome":false,"reason":"cloud"}', effectiveWebAccess({ search: true, chrome: true }, { cloud: true, chromeReady: true }));
+check("effectiveWebAccess: chrome without the native host drops only chrome", JSON.stringify(effectiveWebAccess({ search: true, chrome: true }, { cloud: false, chromeReady: false })) === '{"search":true,"chrome":false,"reason":"chrome-not-set-up"}', effectiveWebAccess({ search: true, chrome: true }, { cloud: false, chromeReady: false }));
+check("effectiveWebAccess: chrome alone, ready, stays chrome without search", JSON.stringify(effectiveWebAccess({ search: false, chrome: true }, { cloud: false, chromeReady: true })) === '{"search":false,"chrome":true,"reason":""}', null);
+check("webModeNotice explains the Chrome setup in plain words", /claude --chrome/.test(webModeNotice("chrome-not-set-up")) && /Claude in Chrome extension/.test(webModeNotice("chrome-not-set-up")) && webModeNotice("") === "", webModeNotice("chrome-not-set-up"));
+check("webModeNotice has no em dashes", !/—/.test(webModeNotice("chrome-not-set-up") + webModeNotice("cloud")), null);
+{
+  const base = { sessionId: "s1", model: "opus", effort: "high", systemAppend: "SYS" };
+  const off = buildSpawnArgs({ ...base, web: { search: false, chrome: false } });
+  const search = buildSpawnArgs({ ...base, web: { search: true, chrome: false } });
+  const chromeOnly = buildSpawnArgs({ ...base, web: { search: false, chrome: true } });
+  const both = buildSpawnArgs({ ...base, web: { search: true, chrome: true }, resume: true });
+  const toolsOf = (a) => a[a.indexOf("--tools") + 1];
+  check("spawn args off: core tools only, --no-chrome", toolsOf(off) === "Bash,Read,Write,Edit,Glob,Grep" && off.includes("--no-chrome") && !off.includes("--chrome"), off);
+  check("spawn args search: adds WebSearch+WebFetch, still no Chrome", toolsOf(search) === "Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch" && search.includes("--no-chrome"), search);
+  check("spawn args chrome alone: --chrome without the search tools", toolsOf(chromeOnly) === "Bash,Read,Write,Edit,Glob,Grep" && chromeOnly.includes("--chrome") && !chromeOnly.includes("--no-chrome"), chromeOnly);
+  check("spawn args both: web tools + --chrome", toolsOf(both).includes("WebFetch") && both.includes("--chrome"), both);
+  check("spawn args keep the non-negotiables", off.includes("-p") && off.includes("--strict-mcp-config") && off[off.indexOf("--permission-mode") + 1] === "bypassPermissions" && off[off.indexOf("--session-id") + 1] === "s1" && both.includes("--fork-session") && both[both.indexOf("--resume") + 1] === "s1", null);
+  check("spawn args never use Task/Agent or scheduling", !/Task|Agent|Schedule|Cron/.test(toolsOf(both)), toolsOf(both));
+  check("spawn args carry model and effort", off[off.indexOf("--model") + 1] === "opus" && off[off.indexOf("--effort") + 1] === "high", null);
+}
+check("webAccessGuide is silent when both are off", webAccessGuide({ search: false, chrome: false }).length === 0 && webAccessGuide(null).length === 0, webAccessGuide(null));
+check("webAccessGuide search only: search tools, no browser rules", /WebSearch and WebFetch/.test(webAccessGuide({ search: true }).join("\n")) && !/claude-in-chrome/.test(webAccessGuide({ search: true }).join("\n")), null);
+check("webAccessGuide chrome only: browser rules, says search is off", /LOOK AND READ ONLY/.test(webAccessGuide({ chrome: true }).join("\n")) && /Web search is off/.test(webAccessGuide({ chrome: true }).join("\n")) && !/WebSearch and WebFetch/.test(webAccessGuide({ chrome: true }).join("\n")), null);
+check("webAccessGuide both: search + look-and-read-only browser rules", /WebSearch and WebFetch/.test(webAccessGuide({ search: true, chrome: true }).join("\n")) && /never type credentials/.test(webAccessGuide({ search: true, chrome: true }).join("\n")) && /tabs you did not open/.test(webAccessGuide({ search: true, chrome: true }).join("\n")) && !/Web search is off/.test(webAccessGuide({ search: true, chrome: true }).join("\n")), null);
+check("webAccessGuide has no em dashes", !/—/.test(webAccessGuide({ search: true, chrome: true }).join("\n")), null);
+{
+  const webSys = buildSystemAppend({ id: "anim-w", fps: 30, width: 1920, height: 1080, durationInFrames: 90, background: "solid", style: "excalidraw" }, "S", "", { search: true, chrome: true });
+  const offSys = buildSystemAppend({ id: "anim-w", fps: 30, width: 1920, height: 1080, durationInFrames: 90, background: "solid", style: "excalidraw" }, "S");
+  check("system prompt embeds the web guide only when web is on", /Web access for this turn/.test(webSys) && !/Web access for this turn/.test(offSys), null);
+}
+check("toolDetail names the search query and the fetched url", toolDetail("WebSearch", { query: "n8n brand green hex" }) === "n8n brand green hex" && toolDetail("WebFetch", { url: "https://n8n.io" }) === "https://n8n.io" && toolDetail("mcp__claude-in-chrome__navigate", { url: "https://x.y" }) === "https://x.y", null);
 check("raw system prompt tells the agent there is no transcript", /STANDALONE/.test(rawSys) && /no transcript for this one/.test(rawSys) && !/narration with word timings/.test(rawSys), rawSys);
 
 /* ---------- headless spawn env (API-key scrub + pinned Claude login dir) ---------- */

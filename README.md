@@ -223,6 +223,11 @@ After changing engine code, restart whatever started it (there is no hot reload)
 
 1. Run **Transcribe** in the Retakes tab, then in the Animation tab pick a run of neighboring segments to animate over. Or start a **raw animation** with no transcript; it lands at the playhead with the length you choose.
 2. Choose a style and an output size, describe what you want, attach reference images if you like, and send. The agent builds the animation, renders it and places it on V2 over the selected range. You can keep chatting to refine it; every render gets a new versioned file.
+3. Optional: give the agent **web access** with the two toggle buttons beside the chat box, next to the image button. Each is on or off per message, you can use either, both or neither, and they work in Self-hosted mode only. With both off (the default) the agent knows only what you tell it and what is in its workspace, and nothing leaves your machine except the chat itself.
+   - **Web search** (globe): the agent can search the web and read public pages, the same WebSearch and WebFetch tools Claude Code has. Useful when a brand color, a logo, a product's wording or a fact has to be right.
+   - **Your Chrome** (browser window): the agent can open pages in your own browser through the [Claude in Chrome](https://chromewebstore.google.com/detail/claude/fcoeoabgfenejglbffodgkkbkcdhcgfn) extension, logged in as you, and look at them (screenshots, page text) to reproduce a real interface faithfully, for example the dashboard of the product you are teaching. It only looks and reads: it is told never to submit forms, change settings, send, buy, delete or type credentials, and to stop and tell you when a page asks for a login or a CAPTCHA. It works in tabs it opens itself and leaves your other tabs alone.
+
+   **Connecting your Chrome** is a one-time step done with Claude Code itself, because the panel's agent is the same `claude` CLI: install the extension from the Chrome Web Store (Chrome, Edge, Brave, Arc and other Chromium browsers work; not WSL), then run `claude --chrome` once in a terminal, signed in with the same Claude login the panel uses, and press Enter at the intro. That writes the browser bridge for that login. The panel's Health dropdown (pulse icon in the header) shows a "Claude in Chrome" row that turns green when it is connected; until then the browser toggle is ignored for the turn and the chat tells you once. Claude in Chrome needs a Claude Pro, Max, Team or Enterprise login (sign in with `/login`; it does not work with an API key or a `claude setup-token` token). Every lookup is a normal turn on your Claude subscription, exactly as in Claude Code.
 
 The first animation on a machine takes a few extra minutes: the engine copies the Remotion kit to `~/.opencutagent/animation-kit`, runs `npm install` there, and Remotion downloads its own headless Chromium (a few hundred MB). The panel reports the progress; later runs skip all of it.
 
@@ -304,7 +309,7 @@ The transcription engine is pluggable (ElevenLabs Scribe v2 today); the engine i
 
 | Mode | What is sent | To whom |
 | --- | --- | --- |
-| Self-hosted (own keys) | Audio of the timeline sections you transcribe; transcript text and your prompts | Directly to *your* ElevenLabs account and *your* Claude login. Nothing reaches the author. |
+| Self-hosted (own keys) | Audio of the timeline sections you transcribe; transcript text and your prompts. With the Animation web toggles on: the agent's searches, the public pages it reads and, with "Your Chrome", what it sees in the tabs it opens in your browser | Directly to *your* ElevenLabs account and *your* Claude login. Nothing reaches the author. |
 | Cloud | The same audio and text | The OpenCutAgent service, then onward to its transcription and AI providers. See the hosted [Privacy Policy](https://opencutagent.com/privacy) and [Terms](https://opencutagent.com/terms). |
 
 Transcripts and audio extracts are cached on your own disk under `.cache/`. Clear them any time from the panel's settings (Storage, then Clear cache).
@@ -317,7 +322,7 @@ Transcripts and audio extracts are cached on your own disk under `.cache/`. Clea
 - **ElevenLabs and Anthropic**: in Self-hosted mode you use your own accounts, under their terms.
 - Other names (Claude, Anthropic, ElevenLabs, OpenRouter, Remotion, n8n) are trademarks of their respective owners and are used only to describe compatibility.
 
-**The animation assistant runs a coding agent on your machine.** It writes and runs code in its own workspace (`~/.opencutagent/animation-kit`) to build each animation. Only enable it on a machine where that is acceptable to you.
+**The animation assistant runs a coding agent on your machine.** It writes and runs code in its own workspace (`~/.opencutagent/animation-kit`) to build each animation. Only enable it on a machine where that is acceptable to you. With the "Your Chrome" toggle on it can also open pages in your signed-in browser; it is instructed to look and read only, but it is an AI agent acting in your browser, so keep an eye on it and leave the toggle off when you do not need it.
 
 ## Docs
 

@@ -16,15 +16,17 @@ check("parseVersion none", parseVersion("nope") === null, parseVersion("nope"));
 check("majorOf", majorOf("22.1.0") === 22 && Number.isNaN(majorOf(null)), majorOf("22.1.0"));
 check("nodeOk accepts 18+", nodeOk("v18.19.0") && nodeOk("v22.0.0"), null);
 check("nodeOk rejects 16", !nodeOk("v16.20.0"), null);
+check("fixHint chrome tells the one-time onboarding", /claude --chrome/.test(fixHint("chrome")) && /Optional/.test(fixHint("chrome")), fixHint("chrome"));
 check("fixHint mac ffmpeg", /brew install ffmpeg/.test(fixHint("ffmpeg", "darwin")), fixHint("ffmpeg", "darwin"));
 check("fixHint win node", /winget/.test(fixHint("node", "win32")), fixHint("node", "win32"));
-check("fixHint has no em dash", !/\u2014/.test(["node", "ffmpeg", "claude", "elevenlabs"].map((t) => fixHint(t, "darwin") + fixHint(t, "win32")).join("")), null);
+check("fixHint has no em dash", !/\u2014/.test(["node", "ffmpeg", "claude", "elevenlabs", "chrome"].map((t) => fixHint(t, "darwin") + fixHint(t, "win32")).join("")), null);
 check("extensionsDir mac", /Library\/Application Support\/Adobe\/CEP\/extensions$/.test(extensionsDir("darwin", "/Users/x")), extensionsDir("darwin", "/Users/x"));
 check("extensionsDir win", /Adobe[\\/]CEP[\\/]extensions$/.test(extensionsDir("win32", "C:\\Users\\x", "C:\\Users\\x\\AppData\\Roaming")), extensionsDir("win32", "C:\\Users\\x", "C:\\Users\\x\\AppData\\Roaming"));
 
-// Live shape: never throws, always the four rows, node row is truthful for this process.
+// Live shape: never throws, always the five rows, node row is truthful for this process.
 const h = await runHealthChecks();
-check("health returns four checks", Array.isArray(h.checks) && h.checks.length === 4, h.checks && h.checks.map((c) => c.id));
+check("health returns five checks", Array.isArray(h.checks) && h.checks.length === 5, h.checks && h.checks.map((c) => c.id));
+check("health chrome row is optional and self-hosted only", (() => { const c = h.checks.find((x) => x.id === "chrome"); return c && c.optional === true && c.required === (h.mode !== "cloud") && /connected|not set up/.test(c.detail); })(), h.checks.find((x) => x.id === "chrome"));
 check("health rows carry id/label/ok/detail", h.checks.every((c) => c.id && c.label && typeof c.ok === "boolean" && typeof c.detail === "string"), h.checks);
 check("health node row matches this process", h.checks[0].id === "node" && h.checks[0].ok === nodeOk(), h.checks[0]);
 check("health mode is self or cloud", h.mode === "self" || h.mode === "cloud", h.mode);

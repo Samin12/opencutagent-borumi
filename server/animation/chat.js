@@ -2,15 +2,16 @@
 // headlessly on the user's subscription. Unlike ai.js's pure judgment oracle,
 // this agent HAS tools (it writes the Remotion scene and may render stills to
 // check itself) — but its cwd is the animation workspace OUTSIDE this repo, it
-// loads no MCP servers (--strict-mcp-config), and it never touches Premiere:
-// the server owns rendering and timeline placement.
+// loads no MCP servers (--strict-mcp-config) except the CLI's own Claude in
+// Chrome bridge when the user opted into browser access, and it never touches
+// Premiere: the server owns rendering and timeline placement.
 //
 // One `claude -p` process per user message; --session-id/--resume keep the
 // conversation's full context across messages (and panel/server restarts).
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { basename } from "node:path";
-import { resolveClaudeLaunch, claudeSpawnEnv, friendlyError } from "../ai.js";
+import { resolveClaudeLaunch, claudeSpawnEnv, friendlyError, chromeHostInstalled } from "../ai.js";
 import { cloudEnabled, cloudChatEnv } from "../cloud.js";
 import { liveEnv } from "../config.js";
 import { log } from "../log.js";
@@ -39,6 +40,95 @@ function chatStallMs() {
   return Number.isFinite(v) && v > 0 ? v : 900000; // 15 min of complete silence
 }
 
+/* ---------------------------------------------------------------------------
+ * Web access (self-hosted only)
+ *
+ * The agent is the same `claude` CLI Claude Code is, so it can carry the same
+ * web tools. Two INDEPENDENT toggles beside the chat composer, sent with every
+ * message (either, both or neither):
+ *   search  Claude Code's built-in WebSearch + WebFetch (text of public pages)
+ *   chrome  the user's own browser through the Claude in Chrome extension
+ *           (--chrome): shares their logins, sees rendered pages.
+ * Cloud mode has no CLI on the user's side, so both are always off there.
+ * Chrome needs the CLI's one-time onboarding (`claude --chrome`) for the SAME
+ * login the spawns use; without it the browser toggle is dropped for the turn
+ * and the chat tells the user once.
+ * ------------------------------------------------------------------------- */
+
+/** Coerce whatever the panel sent into {search, chrome} booleans (both off when unknown). */
+export function normalizeWebAccess(v) {
+  if (v && typeof v === "object") return { search: v.search === true || v.search === 1 || v.search === "1", chrome: v.chrome === true || v.chrome === 1 || v.chrome === "1" };
+  const s = String(v || "").toLowerCase(); // legacy single-mode strings
+  return { search: s === "search" || s === "chrome", chrome: s === "chrome" };
+}
+
+/** True when either toggle is on. */
+export function webAccessOn(w) { return !!(w && (w.search || w.chrome)); }
+
+/**
+ * The web access a spawn will really run with, plus why it differs from the
+ * request when it does. `cloud` and `chromeReady` are injectable for tests.
+ * @returns {{search:boolean, chrome:boolean, reason:""|"cloud"|"chrome-not-set-up"}}
+ */
+export function effectiveWebAccess(requested, { cloud = cloudEnabled(), chromeReady = chromeHostInstalled() } = {}) {
+  const w = normalizeWebAccess(requested);
+  if (!webAccessOn(w)) return { search: false, chrome: false, reason: "" };
+  if (cloud) return { search: false, chrome: false, reason: "cloud" };
+  if (w.chrome && !chromeReady) return { search: w.search, chrome: false, reason: "chrome-not-set-up" };
+  return { search: w.search, chrome: w.chrome, reason: "" };
+}
+
+/** The panel-facing note for a downgraded turn, or "" when nothing changed. */
+export function webModeNotice(reason) {
+  switch (reason) {
+    case "chrome-not-set-up":
+      return "Your Chrome is not connected to Claude yet, so the agent cannot use your browser on this animation. To connect it: install the Claude in Chrome extension, run claude --chrome once in a terminal (same Claude login the panel uses) and press Enter at the intro. The Health icon in the panel header shows when it is ready.";
+    case "cloud":
+      return "Web access is only available in self-hosted mode, so this turn runs without it.";
+    default:
+      return "";
+  }
+}
+
+/**
+ * The full `claude -p` argument list for one animation turn. Pure, so tests
+ * can pin the flags that matter: the tool whitelist, --chrome/--no-chrome,
+ * session forking. `web` must already be the EFFECTIVE access.
+ */
+export function buildSpawnArgs({ prefixArgs = [], sessionId, resume = false, web = null, model, effort, systemAppend }) {
+  const w = normalizeWebAccess(web);
+  // Core tools only: file work + bash for typecheck/stills. No Task/Agent or
+  // scheduling — a -p turn that "waits for a background agent" waits forever
+  // (seen live: the agent spawned a survey sub-agent + a wakeup on turn one).
+  // WebSearch/WebFetch are built-ins too, so they join the whitelist when the
+  // user turned web search on; the Chrome tools are an MCP server the CLI
+  // hosts itself, switched by --chrome (and --no-chrome pins it off even for
+  // a login that enabled Chrome by default).
+  const tools = ["Bash", "Read", "Write", "Edit", "Glob", "Grep", ...(w.search ? ["WebSearch", "WebFetch"] : [])];
+  const args = [
+    ...prefixArgs,
+    "-p",
+    "--verbose",
+    "--output-format", "stream-json",
+    "--include-partial-messages",
+    "--permission-mode", "bypassPermissions",
+    "--strict-mcp-config",
+    "--tools", tools.join(","),
+    w.chrome ? "--chrome" : "--no-chrome",
+    // FORK EVERY RESUMED TURN. The id we resume keeps whatever state it had,
+    // and the turn is written into a NEW one - so every id we have ever
+    // recorded stays a valid, unchanging rewind point (that is what makes
+    // "restart from here" possible; see animRestart). Verified against this
+    // CLI build: --fork-session works with -p --resume, returns the new id in
+    // the result, and reads the prompt cache, so a fork is nearly free.
+    ...(resume ? ["--resume", sessionId, "--fork-session"] : ["--session-id", sessionId]),
+    "--append-system-prompt", systemAppend,
+  ];
+  if (model && model !== "latest") args.push("--model", model);
+  if (effort) args.push("--effort", effort);
+  return args;
+}
+
 /** One-line description of a tool call for the panel's activity chips. */
 export function toolDetail(name, input = {}) {
   switch (name) {
@@ -50,6 +140,17 @@ export function toolDetail(name, input = {}) {
       return String(input.pattern || "").slice(0, 60);
     case "TodoWrite":
       return "updating plan";
+    case "WebSearch":
+      return String(input.query || "").slice(0, 80);
+    case "WebFetch":
+      return String(input.url || "").slice(0, 80);
+    case "mcp__claude-in-chrome__navigate":
+      return String(input.url || "").slice(0, 80);
+    case "mcp__claude-in-chrome__find":
+    case "mcp__claude-in-chrome__get_page_text":
+      return String(input.query || "").slice(0, 60);
+    case "mcp__claude-in-chrome__computer":
+      return String(input.action || "").slice(0, 40);
     default: {
       const s = JSON.stringify(input);
       return s && s !== "{}" ? s.slice(0, 60) : "";
@@ -62,7 +163,7 @@ export function toolDetail(name, input = {}) {
  * stays so tool behavior is normal). Repeated on every turn — each turn is a
  * fresh spawn and appended prompts are per-invocation.
  */
-export function buildSystemAppend(job, styleSkill, framesSkill = "") {
+export function buildSystemAppend(job, styleSkill, framesSkill = "", web = null) {
   const durSec = (job.durationInFrames / job.fps).toFixed(2);
   const raw = !!job.raw;
   return [
@@ -95,6 +196,7 @@ export function buildSystemAppend(job, styleSkill, framesSkill = "") {
     "- Stills for self-checking are fine: npx remotion still " + job.id + " src/jobs/" + job.id + "/check.png --frame=N (then view the PNG).",
     "- If you're only answering a question or the scene isn't ready, don't touch render.json.",
     "",
+    ...webAccessGuide(web),
     ...(job.seeFrames && framesSkill ? [
       "The frames guide below is authoritative for how to see the footage and anchor to it:",
       "<frames-skill>",
@@ -110,38 +212,50 @@ export function buildSystemAppend(job, styleSkill, framesSkill = "") {
 }
 
 /**
+ * The web-access paragraph of the system prompt. Empty when both toggles are
+ * off, so an offline turn never even mentions the internet. Written for the
+ * agent, but the "say it in plain words" rule keeps the editor-facing chat
+ * jargon-free.
+ */
+export function webAccessGuide(web) {
+  const w = normalizeWebAccess(web);
+  if (!webAccessOn(w)) return [];
+  const lines = ["Web access for this turn (the user turned it on beside the chat):"];
+  if (w.search) {
+    lines.push("- You have WebSearch and WebFetch. Use them when getting something RIGHT needs a source: a product's real colors, logo, layout or wording, a brand the user names, a fact or figure that will appear on screen, a site the user points you at. Do not browse for things you already know, and do not wander: each lookup spends the user's Claude usage and time.");
+  }
+  if (w.chrome) {
+    lines.push(
+      "- You have the user's OWN browser through the mcp__claude-in-chrome__* tools. It shares their logins, so you can open the exact app or page they describe (a dashboard they are signed into, a doc, their own site) and look at it as they see it: take screenshots with the computer tool to study layout and color, read text with get_page_text, use find to locate elements. That is how you reproduce a real interface faithfully." + (w.search ? "" : " Web search is off for this turn, so the browser is your only window to the web."),
+      "- Browser rules: start with tabs_context_mcp (createIfEmpty: true) and work in the tabs you create; never touch, close or navigate tabs you did not open. LOOK AND READ ONLY: never submit forms, change settings, send messages, post, buy, delete or download anything, and never type credentials. If a page asks you to log in or shows a CAPTCHA, stop there and tell the user in plain words what you needed. Prefer browser_batch for a sequence of steps. Close the tabs you opened when you are done.",
+    );
+  }
+  lines.push(
+    "- In the chat, never mention tool names, browsing mechanics or raw URLs; say what you looked at in plain words (for example: I checked the n8n site for the exact green).",
+    "",
+  );
+  return lines;
+}
+
+/**
  * Run one chat turn. Streams UI events through onEvent:
  *   {kind:"delta", text}                 assistant text as it streams
  *   {kind:"tool", name, detail}          a tool call started
  * Resolves {ok, text, sessionId, usage, durationMs, numTurns} when the turn ends.
  */
-export function runChatTurn({ kitDirPath, job, prompt, styleSkill = "", framesSkill = "", model, effort, token, onEvent = () => {} }) {
+export function runChatTurn({ kitDirPath, job, prompt, styleSkill = "", framesSkill = "", web = null, model, effort, token, onEvent = () => {} }) {
   return new Promise((resolve, reject) => {
     const [bin, ...prefixArgs] = resolveClaudeLaunch();
     const sessionId = job.sessionId || randomUUID();
-    const args = [
-      ...prefixArgs,
-      "-p",
-      "--verbose",
-      "--output-format", "stream-json",
-      "--include-partial-messages",
-      "--permission-mode", "bypassPermissions",
-      "--strict-mcp-config",
-      // Core tools only: file work + bash for typecheck/stills. No Task/Agent or
-      // scheduling — a -p turn that "waits for a background agent" waits forever
-      // (seen live: the agent spawned a survey sub-agent + a wakeup on turn one).
-      "--tools", "Bash,Read,Write,Edit,Glob,Grep",
-      // FORK EVERY RESUMED TURN. The id we resume keeps whatever state it had,
-      // and the turn is written into a NEW one - so every id we have ever
-      // recorded stays a valid, unchanging rewind point (that is what makes
-      // "restart from here" possible; see animRestart). Verified against this
-      // CLI build: --fork-session works with -p --resume, returns the new id in
-      // the result, and reads the prompt cache, so a fork is nearly free.
-      ...(job.sessionId ? ["--resume", sessionId, "--fork-session"] : ["--session-id", sessionId]),
-      "--append-system-prompt", buildSystemAppend(job, styleSkill, framesSkill),
-    ];
-    if (model && model !== "latest") args.push("--model", model);
-    if (effort) args.push("--effort", effort);
+    const args = buildSpawnArgs({
+      prefixArgs,
+      sessionId,
+      resume: !!job.sessionId,
+      web: normalizeWebAccess(web), // the caller resolved cloud/Chrome availability already
+      model,
+      effort,
+      systemAppend: buildSystemAppend(job, styleSkill, framesSkill, web),
+    });
 
     const env = claudeSpawnEnv(); // no stray API key; honors a pinned Claude login dir
     if (cloudEnabled()) {

@@ -754,6 +754,7 @@
       if (el.sttSec) el.sttSec.hidden = !self;
       if (el.usageSec) el.usageSec.hidden = !self;
       if (el.advSec) el.advSec.hidden = !self;
+      if (typeof Anim !== "undefined" && Anim && Anim.onCloud) Anim.onCloud(); // the web toggles are self-hosted only
       if (el.cacheHint) el.cacheHint.textContent = self
         ? "Transcripts and audio scans are cached per source file so reloads are free. Clearing means the next Load re-transcribes (ElevenLabs credits)."
         : "Transcripts and audio scans are cached per source file so reloads are free. Clearing means the next Load re-transcribes (uses your monthly quota).";
@@ -2591,7 +2592,7 @@
     function cache() {
       ["animStyle", "animStyleWrap", "animBgCtl", "animTrack", "animTrackWrap", "animFollow", "animBackBtn",
        "animSize", "animSizeWrap", "animOrientCtl", "animSizeCustom", "animW", "animH",
-       "animFrames", "animFramesWrap",
+       "animFrames", "animFramesWrap", "animWebBtn", "animChromeBtn",
        "animSelect", "animStatus", "animJobs", "animSegs", "animRawBtn",
        "animSelSummary", "animCreateBtn", "animChatWrap", "animJobInfo", "animChatLog",
        "animAttach", "animText", "animSendBtn", "animRedoBtn", "animStopBtn", "animImgBtn", "animFile",
@@ -2609,6 +2610,8 @@
         state.customW = window.localStorage.getItem("editagent.anim.w") || "";
         state.customH = window.localStorage.getItem("editagent.anim.h") || "";
         state.frames = window.localStorage.getItem("editagent.anim.frames") === "1";
+        state.webSearch = window.localStorage.getItem("editagent.anim.web.search") === "1";
+        state.webChrome = window.localStorage.getItem("editagent.anim.web.chrome") === "1";
       } catch (e) {}
     }
     function persistPrefs() {
@@ -2622,6 +2625,8 @@
         window.localStorage.setItem("editagent.anim.w", el.animW ? el.animW.value : state.customW);
         window.localStorage.setItem("editagent.anim.h", el.animH ? el.animH.value : state.customH);
         window.localStorage.setItem("editagent.anim.frames", state.frames ? "1" : "0");
+        window.localStorage.setItem("editagent.anim.web.search", state.webSearch ? "1" : "0");
+        window.localStorage.setItem("editagent.anim.web.chrome", state.webChrome ? "1" : "0");
       } catch (e) {}
     }
     function setStatus(text, isErr) { el.animStatus.textContent = text || ""; el.animStatus.className = "statusbar" + (isErr ? " err" : ""); }
@@ -2705,9 +2710,34 @@
       scrollChat();
     }
     // The editor never sees raw tool calls; each becomes a friendly one-line status.
+    /* Web access: two independent toggles beside the composer (web search,
+     * your Chrome), sent with every message like an attachment would be. They
+     * only disappear in cloud mode, where the agent has no web tools at all
+     * (the server ignores the values there too). */
+    function webAccess() { return { search: !!state.webSearch, chrome: !!state.webChrome }; }
+    function syncWebCtl() {
+      if (!el.animWebBtn || !el.animChromeBtn) return;
+      var cloud = typeof AI !== "undefined" && AI && AI.cloudActive && AI.cloudActive();
+      el.animWebBtn.style.display = cloud ? "none" : "";
+      el.animChromeBtn.style.display = cloud ? "none" : "";
+      el.animWebBtn.className = "icon-btn anim-web" + (state.webSearch ? " active" : "");
+      el.animWebBtn.setAttribute("aria-pressed", state.webSearch ? "true" : "false");
+      el.animChromeBtn.className = "icon-btn anim-web" + (state.webChrome ? " active" : "");
+      el.animChromeBtn.setAttribute("aria-pressed", state.webChrome ? "true" : "false");
+    }
     function friendlyTool(ev) {
       var d = String(ev.detail || "").toLowerCase();
+      // Claude in Chrome tools all share one prefix; the editor just sees "looking at a page".
+      if (/^mcp__claude-in-chrome__/.test(String(ev.name || ""))) {
+        var t = String(ev.name).replace(/^mcp__claude-in-chrome__/, "");
+        if (t === "navigate" || t === "tabs_create_mcp") return "Opening a page in your browser…";
+        if (t === "computer" && /screenshot/.test(d)) return "Taking a look at the page…";
+        if (t === "get_page_text" || t === "read_page" || t === "find") return "Reading the page…";
+        return "Looking at the page in your browser…";
+      }
       switch (ev.name) {
+        case "WebSearch": return "Searching the web…";
+        case "WebFetch": return "Reading a web page…";
         case "Read":
           if (d === "brief.md") return "Reading the brief and your narration…";
           // Footage frames exported for a frame-aware job (full frames, sheets, crops, check sheets).
@@ -3241,6 +3271,11 @@
       el.animOrientCtl.style.display = "none";
       el.animSizeCustom.style.display = "none";
       el.animFramesWrap.style.display = "none";
+      // The chat's last web choice wins over the global preference, so a
+      // reopened chat sends what it was built with until the user changes it.
+      var jw = activeJob();
+      if (jw && jw.web && typeof jw.web === "object") { state.webSearch = !!jw.web.search; state.webChrome = !!jw.web.chrome; }
+      syncWebCtl();
       stopPoll(); // no segment list to highlight in chat mode
       renderChat();
       updateButtons();
@@ -3318,7 +3353,7 @@
       el.animText.value = "";
       setChatStatus("Thinking…", true);
       var p = AI.params();
-      callServer("animChat", { jobId: jobId, text: text, images: images, model: p.model, effort: p.effort }, function (m) { setChatStatus(m, true); }).then(
+      callServer("animChat", { jobId: jobId, text: text, images: images, model: p.model, effort: p.effort, web: webAccess() }, function (m) { setChatStatus(m, true); }).then(
         function (res) {
           state.busy = false;
           stopElapsed();
@@ -3384,6 +3419,8 @@
         setChatStatus(friendlyTool(ev), true);
       } else if (ev.kind === "status") {
         setChatStatus(ev.text || "", true);
+      } else if (ev.kind === "note") {
+        appendSystemBubble(ev.text || "", false); // e.g. "your Chrome is not connected yet"
       } else if (ev.kind === "placed") {
         appendSystemBubble(ev.text || "Animation placed on the timeline.", false, ev.targetSeconds);
         setChatStatus("");
@@ -3485,11 +3522,14 @@
       var oInputs = el.animOrientCtl.querySelectorAll("input");
       for (i = 0; i < oInputs.length; i++) oInputs[i].disabled = !!state.activeJobId || state.busy;
       el.animFrames.disabled = !!state.activeJobId || state.busy;
+      el.animWebBtn.disabled = state.busy; // per message, so they stay live inside a chat
+      el.animChromeBtn.disabled = state.busy;
       updateSelSummary();
     }
     function onShow() {
       renderSegs();
       syncBgCtl();
+      syncWebCtl();
       refreshState();
       updateButtons();
       startPoll();
@@ -3552,6 +3592,9 @@
       el.animH.addEventListener("change", persistPrefs);
       syncFramesCtl();
       el.animFrames.addEventListener("change", function () { state.frames = el.animFrames.checked; persistPrefs(); syncFramesCtl(); });
+      el.animWebBtn.addEventListener("click", function () { state.webSearch = !state.webSearch; persistPrefs(); syncWebCtl(); });
+      el.animChromeBtn.addEventListener("click", function () { state.webChrome = !state.webChrome; persistPrefs(); syncWebCtl(); });
+      syncWebCtl();
       el.animFollow.checked = state.follow;
       el.animFollow.addEventListener("change", function () { state.follow = el.animFollow.checked; persistPrefs(); });
       // The raw length lives in the chat header, which is rebuilt on every
@@ -3621,7 +3664,7 @@
     // __editagent.Anim.setJobs([{id:"anim-x",durationSec:10,range:{...},chat:[...]}]);
     // __editagent.Anim.openJob("anim-x"); __editagent.Anim.onEvent({jobId:"anim-x", event:{kind:"delta", text:"…"}})
     return {
-      wire: wire, updateButtons: updateButtons, onShow: onShow, onHide: onHide,
+      wire: wire, updateButtons: updateButtons, onShow: onShow, onHide: onHide, onCloud: syncWebCtl,
       onEvent: onEvent, onSegments: onSegments, openJob: openJob, refreshState: refreshState,
       setJobs: function (jobs) { state.jobs = jobs || []; renderJobs(); if (state.activeJobId) renderChat(); },
       lastUserText: lastUserText, // what Redo would re-send (browser QA)
@@ -3637,8 +3680,8 @@
    * button carries a summary dot: red if anything required is missing. */
   var Health = (function () {
     var el = {};
-    var rows = {}; // id -> {label, ok:true|false|null, detail, fix, note, required}
-    var ORDER = ["engine", "host", "node", "ffmpeg", "claude", "elevenlabs"];
+    var rows = {}; // id -> {label, ok:true|false|null, detail, fix, note, required, optional}
+    var ORDER = ["engine", "host", "node", "ffmpeg", "claude", "elevenlabs", "chrome"];
     var checking = false;
 
     function set(id, patch) {
@@ -3693,7 +3736,7 @@
         var list = (r && r.checks) || [];
         for (var i = 0; i < list.length; i++) {
           var c = list[i];
-          set(c.id, { label: c.label, ok: !!c.ok, detail: c.detail || "", fix: c.fix || "", note: c.note || "", required: c.required !== false });
+          set(c.id, { label: c.label, ok: !!c.ok, detail: c.detail || "", fix: c.fix || "", note: c.note || "", required: c.required !== false, optional: c.optional === true });
         }
       }, function (err) {
         checking = false;
@@ -3711,7 +3754,7 @@
       var worst = "ok";
       for (var i = 0; i < ORDER.length; i++) {
         var r = rows[ORDER[i]];
-        if (!r || r.required === false || ORDER[i] === "elevenlabs") continue;
+        if (!r || r.required === false || r.optional || ORDER[i] === "elevenlabs") continue;
         if (r.ok === false) return "bad";
         if (r.ok === null) worst = "wait";
       }
@@ -3741,10 +3784,12 @@
             + '<button type="button" class="sm health-act" data-act="key">Add API key</button></div>';
           continue;
         }
-        var dot = "dot" + (r.ok === true ? " ok" : r.ok === false ? " bad" : "");
+        // Optional rows (Claude in Chrome) never go red: a missing one is a
+        // grey "not set up" with the how-to in a quiet hint, not a warning.
+        var dot = "dot" + (r.ok === true ? " ok" : r.ok === false ? (r.optional ? " off" : " bad") : "");
         html += '<div class="health-row"><span class="' + dot + '"></span><span class="health-name">' + esc(r.label)
           + (r.note ? '<span class="health-note">' + esc(r.note) + '</span>' : '') + '</span><span class="health-val">' + esc(r.detail) + '</span></div>';
-        if (r.ok !== true && r.fix && r.fix !== lastFix) html += '<div class="health-fix">' + esc(r.fix) + '</div>';
+        if (r.ok !== true && r.fix && r.fix !== lastFix) html += '<div class="health-fix' + (r.optional ? ' opt' : '') + '">' + esc(r.fix) + '</div>';
         lastFix = r.ok !== true ? r.fix : "";
       }
       el.healthList.innerHTML = html;

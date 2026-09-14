@@ -96,6 +96,16 @@ if ($claudeCmd) {
   $cv = (& claude --version 2>$null | Select-Object -First 1) -replace '\s*\(Claude Code\)', ''
   Ok "Claude Code $cv"
   Note "Make sure it is signed in: run 'claude' once in a terminal (AI features run on your Claude subscription)."
+  # Optional: Claude in Chrome lets the Animation agent browse in the user's own
+  # browser. The CLI's one-time onboarding writes chrome\chrome-native-host* into
+  # the login's config dir (the same dir the engine spawns with; see health.js).
+  $cfg = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { "$env:USERPROFILE\.claude" }
+  if (Test-Path "$Root\.env") {
+    $envdir = (Get-Content "$Root\.env" | Where-Object { $_ -match '^EDITAGENT_CLAUDE_CONFIG_DIR=' } | Select-Object -Last 1) -replace '^EDITAGENT_CLAUDE_CONFIG_DIR=', '' -replace '^["'']|["'']$', ''
+    if ($envdir) { $cfg = $envdir }
+  }
+  if (Get-ChildItem -Path "$cfg\chrome" -Filter "chrome-native-host*" -ErrorAction SilentlyContinue) { Ok "Claude in Chrome connected (optional: the Animation agent can browse in your Chrome)" }
+  else { Note "Claude in Chrome is not connected (optional). To let the Animation agent look at pages in your own browser: install the Claude in Chrome extension, then run 'claude --chrome' once and press Enter at the intro." }
 } else {
   Fix "Claude Code is missing (needed for every AI feature). Install: irm https://claude.ai/install.ps1 | iex   then run 'claude' once to sign in, and re-run this script."
 }

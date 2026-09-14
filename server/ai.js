@@ -12,7 +12,7 @@
 // and can't touch the filesystem. It's a pure text-in / JSON-out oracle; the
 // server already holds the data (ctx.silence / ctx.review) and applies the result.
 import { spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir, tmpdir } from "node:os";
@@ -78,6 +78,33 @@ export function claudeSpawnEnv() {
   const configDir = liveEnv("EDITAGENT_CLAUDE_CONFIG_DIR");
   if (configDir) env.CLAUDE_CONFIG_DIR = configDir;
   return env;
+}
+
+/**
+ * The Claude Code config dir a headless spawn will actually use: the pinned
+ * EDITAGENT_CLAUDE_CONFIG_DIR, else an inherited CLAUDE_CONFIG_DIR, else the
+ * CLI default ~/.claude. Everything login-scoped lives there, including the
+ * Claude in Chrome native host that `claude --chrome` writes on first use.
+ */
+export function claudeConfigDir(env = claudeSpawnEnv()) {
+  return env.CLAUDE_CONFIG_DIR || join(homedir(), ".claude");
+}
+
+/**
+ * True when Claude in Chrome has been set up for the login the spawns use.
+ * The CLI's one-time Chrome onboarding writes `chrome/chrome-native-host*`
+ * (a tiny wrapper the browser extension launches) into the config dir and
+ * registers it with every Chromium browser it finds; the wrapper is the one
+ * file that exists on every platform, so it is the signal. Without it a
+ * `--chrome` spawn gets no browser tools, so the animation agent falls back
+ * to plain web search instead of promising a browser it cannot reach.
+ */
+export function chromeHostInstalled(configDir = claudeConfigDir()) {
+  try {
+    return readdirSync(join(configDir, "chrome")).some((f) => f.startsWith("chrome-native-host"));
+  } catch {
+    return false;
+  }
 }
 
 /** Turn low-level spawn/auth failures into a message the panel can show verbatim. */

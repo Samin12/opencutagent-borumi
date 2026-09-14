@@ -16,7 +16,7 @@ import {
   readRenderSignal, saveRefImage, animTrackIndex, fmtTokens, fmtElapsed, sequenceFrameSize,
   setRawLength,
 } from "./jobs.js";
-import { runChatTurn } from "./chat.js";
+import { runChatTurn, normalizeWebAccess, effectiveWebAccess, webModeNotice } from "./chat.js";
 import { renderJob, renderScale } from "./render.js";
 import { verifyJobAnchors, verifyRounds } from "./frames.js";
 import { reconcile, requireReview } from "../review.js";
@@ -90,6 +90,7 @@ function jobSummary(job, ctx = null) {
     style: job.style,
     background: job.background,
     seeFrames: !!job.seeFrames,
+    web: normalizeWebAccess(job.web),
     trackIndex: job.trackIndex != null ? job.trackIndex : animTrackIndex(),
     fps: job.fps,
     width: job.width,
@@ -255,6 +256,7 @@ async function verifyWithFixups(ctx, job, kitPath, { model, effort, token, onTok
       prompt,
       styleSkill: readStyleSkill(job.style),
       framesSkill: readFramesSkill(),
+      web: effectiveWebAccess(job.web),
       model,
       effort,
       token,
@@ -400,6 +402,19 @@ async function animChat(params, _helpers, ctx) {
     const kitPath = await ensureKit({ onProgress: (m) => pushEvent(ctx, job.id, { kind: "status", text: m }), token });
     if (token.aborted) throw new Error("Cancelled");
 
+    // Web access is two per-message toggles beside the composer (self-hosted
+    // only). The request is remembered on the job so the fix-up turns and a
+    // reopened chat follow it; the EFFECTIVE access may be less (cloud mode,
+    // or Chrome not connected for this login), and the user hears about that
+    // once per job instead of wondering why the agent never looked.
+    job.web = normalizeWebAccess(params.web);
+    const webRes = effectiveWebAccess(job.web);
+    if (webRes.reason && job.webNoticed !== webRes.reason) {
+      job.webNoticed = webRes.reason;
+      appendChat(job, { role: "system", kind: "note", text: webModeNotice(webRes.reason) });
+      pushEvent(ctx, job.id, { kind: "note", text: webModeNotice(webRes.reason) });
+    }
+
     const refs = images.map((im) => saveRefImage(job, kitPath, im.name, im.data));
     // Recorded BEFORE the turn runs, so "restart from here" can put the session
     // and the scene back exactly as they were when this message was sent.
@@ -431,6 +446,7 @@ async function animChat(params, _helpers, ctx) {
         prompt,
         styleSkill: readStyleSkill(job.style),
         framesSkill: job.seeFrames ? readFramesSkill() : "",
+        web: webRes,
         model: params.model,
         effort: params.effort,
         token,

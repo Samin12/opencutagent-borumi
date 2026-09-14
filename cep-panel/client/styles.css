@@ -138,7 +138,8 @@ header {
 .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--wait); flex: none; }
 .dot.ok { background: var(--ok); box-shadow: 0 0 0 3px rgba(79, 180, 119, 0.18); }
 .dot.bad { background: var(--bad); }
-.dot:not(.ok):not(.bad) { animation: pulse 1.3s var(--ease) infinite; }
+.dot.off { background: var(--text-tertiary); opacity: 0.6; } /* optional prerequisite, not set up */
+.dot:not(.ok):not(.bad):not(.off) { animation: pulse 1.3s var(--ease) infinite; }
 @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }
 
 /* ===================== GLOBAL PROGRESS BAR ===================== */
@@ -206,6 +207,7 @@ button.icon-btn .dot.mini { width: 6px; height: 6px; margin: 0 1px; box-shadow: 
 .health-val { color: var(--text-tertiary); font-size: var(--fs-sm); font-variant-numeric: tabular-nums; max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .health-row .health-act { min-height: 22px; padding: 0 var(--sp-2); flex: none; }
 .health-fix { margin: -2px 0 var(--sp-1) 16px; color: var(--danger-text); font-size: var(--fs-xs); line-height: 1.4; }
+.health-fix.opt { color: var(--text-tertiary); }
 button.danger-text { color: var(--danger-text); align-self: flex-start; }
 button.danger-text:hover:not(:disabled) { background: var(--danger-bg); border-color: var(--danger); color: var(--danger-text); }
 
