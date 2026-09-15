@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Cut"
+  short_description: "remove one range of footage from the open Borumi project with edge-safe cut points, showing the exact times be"
+  default_prompt: "Use $borumi-cut to remove a range from my open Borumi project after showing me the plan."

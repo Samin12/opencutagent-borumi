@@ -4,11 +4,12 @@ import { AbsoluteFill, Img, getInputProps, staticFile } from "remotion";
 /**
  * A real footage frame rendered UNDER a frame-aware overlay so stills show the
  * annotations composited over what is actually on screen. This is the
- * verification layer for "Use frames" jobs: point `src` at an extracted frame
- * (e.g. "frames/<jobId>/t0012.40.png"), render a still at the matching frame
- * number, and check the drawing lands on its target.
+ * verification layer for frame-aware (--frames) jobs: point `src` at a frame
+ * that frames.mjs wrote from Borumi's inspect of the composite
+ * (e.g. "frames/<jobId>/full/t0012.50.png"), render a still at the matching
+ * frame number with `job.mjs still`, and check the drawing lands on its target.
  *
- * It renders NOTHING on the server's final render (which passes the
+ * It renders NOTHING in the final render (`job.mjs render` passes the
  * { final: true } input prop), so it can safely stay in the scene: the
  * delivered clip keeps full transparency where the footage shows through.
  */

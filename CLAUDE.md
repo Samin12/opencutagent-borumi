@@ -1,125 +1,167 @@
-# Working in OpenCutAgent
+# Working in opencutagent-borumi
 
-OpenCutAgent (formerly EditAgent; the local folder is still `editagent/`) is a Premiere Pro CEP panel + Node MCP server that lets Claude edit a video on Premiere's **live timeline**: transcribe, mark retakes/silences, cut, and generate Remotion animations onto a track. The AI judgment is always **Claude itself** (this chat via the `ppro_*` tools, a headless `claude -p` spawned by the server, or the cloud proxy). There is no other LLM.
+This repository is the **borumi** Claude Code plugin: slash commands (`/borumi:visualize`,
+`/borumi:cut`, ...) that edit a Borumi project through Borumi's own MCP server, plus a vendored
+Remotion animation kit (from OpenCutAgent) that `/borumi:visualize` renders with and places into
+the project. The plugin root is the repository root. There is no server, no panel and no Premiere
+in this tree any more; that history lives in `docs/LESSONS.md` under its own heading.
 
-- **First time on this machine, or "make it work":** run the `/setup` skill (`.claude/skills/setup/`). It drives `install.sh` / `install.ps1 --check`, fixes the `[fix]` lines, verifies. The panel's header pulse icon (Health dropdown, `server/health.js` + the `health` RPC) shows the same prerequisites with green/red dots.
-- `docs/ARCHITECTURE.md` explains how the pieces talk and why. Read it once.
-- `docs/LESSONS.md` is the dated, full-detail history of every feature and failure (symptom, root cause, fix). **Search it before debugging anything that "used to work" or looks like a known symptom.** It is long on purpose; it is not loaded per session.
-- **When you hit a new failure and find the fix:** add a one-line rule under the matching section below, and the full story to `docs/LESSONS.md` (and to the project memory file).
+- `docs/ARCHITECTURE.md` says how a session, the scripts, the kit workspace and Borumi fit
+  together. Read it once.
+- The contracts every script and skill is written against: `DESIGN.md` in the build scratchpad
+  produced them, and they are written down here as `docs/ARCHITECTURE.md` (job lifecycle,
+  placement planner, deliverable folders), `docs/borumi-mcp-cookbook.md` (every Borumi behaviour
+  verified live, exact JSON), `docs/borumi-guides/` (Borumi's own guides and `tools.json`), and
+  `skills/borumi-editing/references/` (cookbook, segment schemas, recovery table, Samin's treatment).
+- `docs/LESSONS.md` is the dated history: the Borumi section first, the Premiere era below.
+  Search it before debugging anything that looks like a known symptom.
 
 ## Layout
 
 ```
-Claude Code --stdio--> server/ (MCP + ws 127.0.0.1:3001 + ffmpeg/Scribe/claude -p) --ws--> cep-panel/client (UI) --evalScript--> cep-panel/host/premiere.jsx (ALL Premiere DOM access)
+.claude-plugin/plugin.json   name, version, description (no mcpServers here)
+.mcp.json                    the Borumi MCP server: /Applications/Borumi.app/Contents/MacOS/borumi mcp
+skills/<name>/SKILL.md       one skill per command; borumi-editing is the shared base (user-invocable: false)
+agents/animator.md           optional designer subagent (file tools only, no Borumi MCP)
+scripts/                     job.mjs, kit.mjs, frames.mjs, segments.mjs, chapters.mjs, placement.mjs, doctor.sh,
+                             check.mjs, borumi_mcp.py + place.py (Codex/batch), install-codex.sh, gen-openai-yaml.mjs,
+                             lib/ (pure modules: paths, intervals, fmt, silence, brief, render, transcript, tools, borumi_client.py)
+animation-kit/               the vendored Remotion kit; GUIDE.md is its rulebook; synced to ~/.borumi-agent/animation-kit
+tests/                       node --test files (*.test.mjs, no Borumi needed) + smoke.mjs (needs the Borumi binary) + fixtures/
+docs/                        ARCHITECTURE, LESSONS, the cookbook, Borumi's guides
 ```
 
-- `server/` - tools (`tools/`), RPCs the panel calls (`rpc/index.js`), review/segmentation (`review.js`, `transcription/`), silences (`silences.js`, `audio/`), headless AI (`ai.js`), cloud proxy client (`cloud.js`), animation agent (`animation/`), XML fast-apply (`rebuild.js`, `roundtrip.js`). State: `ctx.review`, `ctx.silence`, `ctx.panelOp` (edit lane), `ctx.animOp` (animation lane).
-- `cep-panel/client/` - `main.js` + `index.html` + `styles.css` (token system, spec in `cep-panel/DESIGN.md`, gallery in `preview.html`). Debug handle in a browser: `window.__editagent = {Retake, Silence, AI, Anim, setConn}`.
-- `animation-kit/` - Remotion template. At runtime it is synced to **`~/.opencutagent/animation-kit`** (the agent's cwd must be outside this repo or it auto-loads this file). Styles are drop-in packages `styles/<id>/{style.json,SKILL.md,src/}`; `n8n-brand`, `n8n-ui`, `n8n-game` are gitignored/local-only.
-- `.claude/skills/` - the editing workflows; the same text is injected into headless calls (single source of truth).
-- Backend (cloud mode, metered proxy, site): separate private repo `~/Documents/opencutagent_backend`.
+Runtime locations, never inside the repo: the kit workspace `~/.borumi-agent/animation-kit`
+(`BORUMI_AGENT_HOME`), the cache `~/.borumi-agent/cache/`, the current-job pointer
+`~/.borumi-agent/current.json`, and the deliverables `<project name> Agent/` next to the
+`.bmprojbundle` (`BORUMI_AGENT_OUT` overrides the parent).
 
-## Server and connection (the #1 source of "why isn't it working")
+## Tests
 
-The panel is ONLY a ws client. Nothing works until `server/index.js` listens on 3001. It is started by (1) the panel auto-start, (2) Claude Code via `.mcp.json` (needed for Sync mode; start Claude Code first), or (3) `npm start` / `./start-opencutagent.command`. One server per machine, operating on whatever sequence is active.
+```
+node scripts/check.mjs          # node --check every .js/.mjs + the missing-import scan
+node --test tests/*.test.mjs    # unit tests; no Borumi, no ffmpeg, no npm install
+node tests/smoke.mjs            # spawns `borumi mcp`, asserts the tool names (needs Borumi installed)
+claude plugin validate .        # manifest and skill frontmatter
+```
 
-- Check who holds the port: `lsof -nP -iTCP:3001 -sTCP:LISTEN`. A relative `node server/index.js` command = started by hand in a terminal.
-- **"panel not connected" though the panel's Health dot is green / "Unknown RPC method" after a code change:** a stale server (often from a SECOND Claude Code window) owns 3001 with old code. Keep ONE Claude Code window in the project, `pkill -9 -f "editagent/server/index.js"` once (does not match a hand-started server; kill that by PID), then `/mcp` reconnect `premiere`. Do not kill+probe repeatedly; every kill triggers a respawn.
-- **"Waiting for server…"** = no server on 3001, not a code bug. Reopen the panel or start one by hand.
-- A zombie MCP-spawned server that is alive but not listening (ppid = a `claude` process) is harmless.
-- `.mcp.json` is gitignored (template `.mcp.json.example`); this Claude Code build does NOT expand `${VAR}`, use absolute paths.
-- **Ground truth without the MCP:** kill the squatter and run a throwaway script importing `server/bridge.js` + `review.js` that binds 3001, waits for the panel to reconnect, dumps `getTimeline`/`buildReview`/`reconcile`, exits. Give it a dummy `rpcDispatcher`. Never "just connect and peek" at a running server: a second ws client hijacks the panel binding.
-- **Live panel DevTools:** `cep-panel/.debug` + PlayerDebugMode expose the real panel at `http://localhost:8078` (`curl /json`, then `Runtime.evaluate` over its ws). Use this FIRST for "behaves weird only in Premiere"; it beats screenshot guessing.
-- The panel-spawned server has stdout on /dev/null (no log) and inherits the bare GUI PATH; `server/paths.js augmentPath()` widens it. Reproduce PATH bugs with `env -i HOME=$HOME PATH=/usr/bin:/bin:/usr/sbin:/sbin node …`.
+Use the shell glob: `node --test tests/` treats the directory as a test file on Node 21+ and
+fails. Every pure function gets a test; the fixtures under `tests/fixtures/` are real Borumi
+responses captured on 2026-09-15, so a test that reads one is a test against the real shapes.
+
+## Hard rules (each one is backed by a lesson; see LESSONS.md)
+
+**Copy**
+- **No em dashes anywhere**: docs, skills, script output, on-screen text, comments. Use a comma,
+  colon or period. `tests/docs.test.mjs` scans the documentation for them.
+- Plain, direct language. Final messages are for a video editor: no tool names, no paths except
+  the render and frame paths, durations through `fmtDur` ("1:25") and wall clock through
+  `fmtElapsed` ("3m 12s") from `scripts/lib/fmt.mjs`. End with the next action.
+
+**Borumi MCP**
+- Guides gate tools per connection: `get_guides` with no args first, then one id per call,
+  before the tool that needs it (`export_video` needs `exporting`, `add_segments` needs
+  `editing_segment_<type>_add`, `get_ui_state` needs `ui_navigation`).
+- Ids are 4-hex strings that must be SEEN on the current connection before use: start every
+  session with `list_open_projects`, then `get_scenes` / `get_timeline` for the range, and only
+  then use ids, including ids from `job.json`. A `tx_id` lives on the connection that began it;
+  never hand one between a script and the session.
+- One small transaction per result. `begin_project_edit`, re-read the `timeline_hash` after
+  every structural call, `inspect_timeline` where visuals matter, `commit_project_edit` with a
+  concrete one-sentence summary, `get_timeline` after commit to verify. `abort_project_edit` on
+  any doubt. Nothing is reversible through the MCP after commit.
+- `commit_project_edit` is deliberately absent from every `allowed-tools` list: the permission
+  prompt that carries Borumi's change summary is the approval gate. Mutating skills also carry
+  `disable-model-invocation: true` and show their preview before `begin_project_edit`.
+- Behind-mode placement never deletes recorded content: the take lands on the next free
+  `screen_N` and the layout points at it. Only layouts and control segments overlapping the
+  range are split and their inner pieces recorded in `placed.replaced_*` so `remove` can put
+  them back.
+- Every trim is targeted per edit set, in the order narration, each active `screen_N`, one
+  overlay layer. Re-read after each call and compare every layer against the expected positions
+  (`t - removedBefore(t)`); never trim `layout` unless one still sits at its old position; abort
+  on any mismatch. Batch ranges in one call in ORIGINAL coordinates.
+- Never apply narration-derived ranges to an independent screen layer.
+- Ranges that cross a scene boundary are refused; offer one job per scene.
+
+**Kit and renders**
+- Jobs are always 30 fps compositions (`timing.ts` hardcodes `SEC()` at 30; Borumi conforms
+  the clip). `durationInFrames = floor((end_ms - start_ms) / (1000/30))`, so a render is never
+  longer than its range; never fix an overshoot with a ripple trim.
+- `job.mjs render` detaches and writes `render-status.json`; poll with `job.mjs wait` (each call
+  under the Bash tool's 600 s limit). A timeout is not a failure. `--foreground` is for tests.
+- Every failure path writes to the job's `log.jsonl` before it propagates. Scripts print JSON to
+  stdout and logs to stderr.
+- Codec knobs live on the render command line (`job.mjs render`), never in `remotion.config.ts`:
+  a global CRF breaks every ProRes render and a global mute cannot be undone by a flag.
+- Every deliverable render passes `--props={"final":true}` (DebugFrame hides) and `--muted`
+  unless the style declares `audio: true`. Front mode = ProRes 4444 `yuva444p10le` mov; behind
+  mode = h264 crf 14 mp4. The all-intra pass is off by default (`BORUMI_AGENT_ALL_INTRA=1`).
+- The designer writes only inside `src/jobs/<id>/` plus the style's Learnings log. The kit
+  sync is additive; `styles/*/SKILL.md` and `frames/SKILL.md` in the workspace are preserved,
+  so bump `<!-- guide-version: N -->` when you change the shipped text or the change never lands.
+- Only `excalidraw`, `n8n` and `leo` ship. Do not promise the upstream `n8n-brand`, `n8n-game`
+  or `n8n-ui` styles.
+
+**Files and locations**
+- Deliverables go in the user's `<project name> Agent/` folder, never in a temp dir.
+  `scripts/lib/paths.mjs` refuses to create anything when the bundle is missing or when
+  `/Volumes/<x>` is not a mount point ("mount the drive first").
+- No new npm dependencies for the plugin scripts. The kit has its own `package.json`.
+- Never write a secret into a doc, a receipt or a log.
 
 ## Loading code changes
 
-- `server/*` -> restart Claude Code (or kill the panel's server; it respawns). No hot reload; `ctx.review` is lost. `.env` changes are live (`liveEnv`).
-- `cep-panel/host/premiere.jsx` -> reopen the panel, or hot-patch with `$.evalFile("<abs repo path>/cep-panel/host/premiere.jsx")` via `ppro_run_script`. Batch ops self-heal on "Unknown action" by doing this themselves.
-- `cep-panel/client/*` -> reopen the panel.
-- `animation-kit/*` -> the workspace resyncs on the next `ensureKit` (hash-stamped). The sync is ADDITIVE: delete removed files from `~/.opencutagent/animation-kit` by hand. Style `SKILL.md` and `frames/SKILL.md` are PRESERVED in the workspace (they carry a user Learnings log): bump `<!-- guide-version: N -->` or the change is invisible, including to tests that read the workspace copy (tests should read `KIT_TEMPLATE_DIR`).
+- `scripts/*` and `skills/*`: read at invocation, nothing to restart. `.mcp.json`: restart the
+  session (`/mcp` reconnect `borumi`).
+- `animation-kit/*`: the workspace resyncs on the next `node scripts/kit.mjs ensure` (hash
+  stamped, additive; delete removed files from `~/.borumi-agent/animation-kit` by hand). Guides
+  with a Learnings log need the guide-version bump. Tests read the repo template, not the
+  workspace.
+- `animation-kit/package.json`: the `.deps-hash` changes and `kit.mjs ensure` runs `npm install`
+  again.
 
-## Retake workflow (Sync mode)
+## Testing live against a throwaway project
 
-1. `ppro_get_timeline_state` returns data = connected.
-2. `ppro_get_retake_segments` populates `ctx.review` (one segment per sentence, pause, cut-off word, immediate word-for-word repeat, or capitalised sentence starter; Scribe audio events and loudness-detected "(unrecognized sound)" stretches are their own word-empty, auto-cut segments; the "Generated segments" clip mode is gone). Judge the segments yourself: keep the most complete pass of each serial-restart run; distinct next-points may yield several keepers per beat; cut fragments and false starts. No-speech segments are auto-cut deterministically, not your call.
-3. `ppro_mark_retakes` in one batched call.
-4. `ppro_apply_retakes` (`remove_gaps:true` = ripple, `remove_fillers:true` = also cut um/uh) or the panel's Apply All. You pick WHICH segments go; the server places every cut edge in the quiet between words (`server/cutplan.js`).
-5. **Verify by re-reading the timeline** (clip count + duration). "applied X/X" counts host calls, not deletions.
+1. Open Borumi, turn on Settings > AI > Enable MCP.
+2. `python3 scripts/borumi_mcp.py start &` and wait for `~/.borumi-agent/sess/ready`; then
+   `python3 scripts/borumi_mcp.py call create_project '{"name":"plugin-smoke"}'`. The bundle
+   lands in `~/Borumi Projects/`.
+3. Make a narrated take: `say -o narration.aiff "..."`, an ffmpeg `testsrc` video muxed with it,
+   then `begin_project_edit`, `create_scenes` (needs the `scripting` guide), `import_media`,
+   `add_segments` take, `commit_project_edit`, `request_transcriptions`, and poll
+   `get_project_overview slices ["transcripts"]` until `pending_media_count` is 0.
+4. Run the commands from a Claude Code session started with `claude --plugin-dir <this repo>`.
+   For a nested `claude -p` from inside a session use `env -u CLAUDECODE -u CLAUDE_CODE_ENTRYPOINT claude -p ...`.
+5. Probe destructive behaviour inside a transaction you then `abort_project_edit`; the cookbook's
+   "Layering, splitting, ripple" section was built that way.
+6. Keep every receipt under `<project> Agent/receipts/` and copy new facts into
+   `docs/borumi-mcp-cookbook.md` and `skills/borumi-editing/references/borumi-mcp-cookbook.md`
+   in the same change.
 
-Apply ladder for big cuts: FCP7-XML round-trip (preserves effects, makes a NEW "… - tightened" sequence, not undoable) -> generated XML rebuild -> in-place razor/lift/close batches. A failed razor apply = a sliced timeline; recover with New Sequence From Clip, do not undo hundreds of steps. A "Translation Report" alert on apply is benign (from the XML export step).
+## Lessons discipline
 
-## Hard rules (each one cost a session; see LESSONS.md for the story)
-
-**Copy and UX**
-- **No em dashes in any user-visible string** (client, server messages, skills, style guides). Tests check style skills for them.
-- Never copy competitor strings verbatim (AutoCut/TimeBolt). Parameter semantics may match; distinctive copy may not.
-- Durations are formatted at the message, never at the data: `fmtDur` (footage length, "1:25") vs `fmtElapsed` (wall clock, "3m 12s") in `server/tools/util.js` with byte-identical twins in `main.js`. Keep them in sync.
-- The animation chat's audience is a VIDEO EDITOR: never surface tool calls, code, paths or jargon in the panel.
-- **No code path may end an animation turn without writing something to chat.json.** A toast is not an error signal.
-- Every pre-flight number field the user cannot judge yet belongs inside the flow, not before it (raw-animation length lives in the chat header).
-
-**CEP panel engine gaps (browser QA cannot catch these)**
-- CEP's Chromium has **no `:has()`** and **no `window.prompt`**. Drive state classes from JS (`syncSegCtl`), use inline inputs for naming.
-- `hidden` attribute: a global `[hidden]{display:none!important}` exists. Never add a component `[hidden]` override; never pair the attribute with an inline `style.display` show.
-- Never show an element by clearing its inline display when the stylesheet hides it; set the real value (`display:"flex"`).
-- `cep.getSystemPath("extension")` returns a percent-encoded `file://` URI: strip + `decodeURI` before any fs call.
-- Use `nodeRequire` (require -> `cep_node.require` -> null) and handle null.
-- Selected-state selectors: `.chk input[type="checkbox"]:not(.switch)` guards the switch styling; keep it.
-
-**Server and editing semantics**
-- Reconcile on media + track + source-overlap, **never `clipId`** (renumbers after a razor). Stored `startFrame/endFrame` go stale after any ripple; apply and export always reconcile live.
-- **Never cut on a raw transcript timestamp.** Scribe word starts sit ~50-240 ms AFTER the real onset and word ends ~180 ms BEFORE the voice stops, so a cut on a segment tile edge clips the kept sentence's first letters. Segment tiles are the review unit only; `cutplan.js planCutSpans` places every edge in the quiet between words on the loudness envelope (margin of air on the kept side, lowest-energy window in continuous speech, timestamp pads only when no envelope). Keep new trims (pauses, fillers) on that path.
-- Only true 29.97/59.94 are drop-frame; "30 fps" is often 30.00003 non-drop.
-- Transcription is per source FILE (cached, ranged islands, batched concat), never per clip. Reload reuses cache; `cacheOnly` paths must never bill. `scribe_v2` only.
-- Silence meter: normalized peak metering, hard -60 floor, keepTalk demotion unconditional on length. Keep server `detectSilences`/`estimateThreshold` and the panel mirrors in sync (`test/silence.js` pins both). Do not re-add the isolation guard or "minimum time between cuts".
-- Sequence markers are the only recolorable timeline annotation (Premiere cannot recolor TrackItems, DVAPR-4217788); ours are sentinel-tagged in `comments`.
-- Auto-resync must send the same `segment_mode`/`track` as the last explicit load (`loadParams()` is the single source).
-- Cache clearing touches `.cache/{transcripts,levels,rebuild}` only; `usage-log.json` and decisions files stay.
-- **Premiere TRUNCATES `Time.seconds` to ticks**: any position set through seconds lands 1-2 ticks off the frame grid, and the timeline ends up with sub-frame gaps Premiere's Close Gap cannot close plus 1-tick sliver clips. Build every Time from integer ticks (`ticksTime`/`gridTime` in premiere.jsx); `makeTime` now rounds. Batch cuts end with the `tidyTimeline` host op (snap to grid + relink); `removeGaps` snaps first.
-- **A per-track QE razor leaves every piece after the first UNLINKED**; `move`/`end`/`remove` on a linked item touch only that item. Relink = select one V piece + its A mates, `seq.linkSelection()`. In FCP7 XML, Premiere resolves `<link>` by (mediatype, trackindex, clipindex), never by `linkclipref` alone: renumber after a split (`relinkClipitems`).
-- **`project.sequences` is ordered by sequence ID (a UUID), NOT by creation.** Never find a clone by index or "the last one"; capture `sequenceID`s before and after and diff. `deleteSequence` on a mis-picked object deletes the user's real sequence (it happened; recovery = the Auto-Save folder next to the .prproj).
-- Env vars stay `EDITAGENT_*`, localStorage `editagent.*`, `$.editagent` namespace; only user-facing names say OpenCutAgent.
-- **Self-hosted (`mode:"self"`) is the default** (`cloud.js readCloudConfig`); cloud is opt-in and its backend may not be deployed. The panel must be LINKED (symlink/junction) into the CEP extensions folder, never copied: auto-start resolves the engine from the panel's realpath. Install/update path = `install.sh` / `install.ps1` (`--check` = report only); keep their checks in step with `server/health.js`.
-
-**Headless and cloud AI**
-- `claude -p` oracle flags are non-negotiable: `--strict-mcp-config`, `--tools ""`, cwd = tmpdir, prompt on stdin, `--json-schema`, no `--bare`, `ANTHROPIC_API_KEY` deleted from env. There is **no `--max-turns`** in this CLI build; verify any flag before designing around it. `--fork-session` exists and is what makes chat rewind possible.
-- `EDITAGENT_CLAUDE_CONFIG_DIR` (this machine: `~/.claude-personal`) selects the login for spawns; "OAuth session expired" means the wrong/stale config dir.
-- Model list comes from the CLI `initialize` handshake (`listClaudeModels`); index.html options are the offline fallback only, version-free, not hand-maintained. A stale persisted pick must fall back to `options[0]`, never a hardcoded name.
-- Cloud mode (default; `~/.opencutagent/cloud.json`) routes AI + transcription through the backend on OpenRouter/ElevenLabs; the local server is still required. **This machine runs self-hosted mode**; AI is paid-only in cloud mode (402 on free).
-- **Animation web access** (`chat.js normalizeWebAccess` = two INDEPENDENT booleans `{search, chrome}`, toggles beside the chat composer, sent per message, self-hosted only): `search` adds `WebSearch,WebFetch` to `--tools`; `chrome` adds `--chrome` (the CLI's own MCP bridge, survives `--strict-mcp-config`; `--no-chrome` pins it off otherwise). Chrome needs the one-time `claude --chrome` onboarding for the SAME config dir the spawns use (`chromeHostInstalled` looks for `<configDir>/chrome/chrome-native-host*`); missing = drop the chrome toggle for the turn + one chat note, never a failed turn. Health row `chrome` is `optional:true` (grey, never red). Keep the agent's browser rules look-and-read-only. Never put per-message options in the Animation bar (that bar is creation-time settings).
-
-**Animation kit and renders**
-- Never set codec-specific knobs (CRF, mute) globally in `remotion.config.ts`; pass them per render. `--muted=false` on the CLI beats `setMuted(true)`. Audio is opt-in per style (`style.json "audio": true`).
-- Never let a font or asset hold an un-retried, un-timed-out `delayRender`; fonts are inlined data URIs via `scripts/inline-fonts.mjs`. Concurrency is capped by resolution (`renderConcurrency`).
-- No wall-clock caps on agent/render turns; stall watchdogs instead (`EDITAGENT_ANIM_STALL_MS`, `_RENDER_STALL_MS`). Failures persist to chat.json; "Render again" re-renders without a new turn.
-- Placement uses `track.overwriteClip` (never insert), reconciled live at place time; renders always get a NEW versioned filename. Render versions and placed clips are never rewound.
-- "Use frames": frames are exported by Premiere itself (QE `exportFramePNG`, ground truth of what the viewer sees; ffmpeg decode of the V1 source can disagree by 2x). Anchored drawings are declared in `anchors.json` and checked by `check-anchors.mjs` before render; `DebugFrame` returns null under `final:true`.
-- Every job gets `words.json` (word timings, `[]` for raw jobs). `sizeSource:"custom"` is never "corrected" to the sequence size.
-- Pixel-art styles: hand-authored row spans and pixel glyphs beat procedural shapes; held zoom magnifications in multiples of 0.2 with a rounded view origin; a logo tile keeps its own colours (`imageTone:"color"`, flat, no emboss).
-
-## Testing and QA
-
-- `npm test` (whole chain; `server/test/*`), `npm run check` (parses AND flags calls to exported names a file neither imports nor declares; run after any import-touching refactor), `npm run eval:retakes` (real `claude -p` vs a human-labeled 412-segment fixture, 97% F1 baseline), kit: `cd animation-kit && npx tsc --noEmit`.
-- **Browser QA of the panel:** `python3 -m http.server --directory cep-panel/client`, open `index.html` (renders outside CEP) or `preview.html` (component gallery). Inject state via `__editagent.*` hooks (`Retake.applyReviewUpdate`, `Retake.setMap`, `AI.renderUsage`, `AI.setCloud`, `Anim.setJobs/openJob/onEvent`, `setConn`). Chrome caches index.html AND styles.css across sessions: hard-reload. Screenshot coordinates are not CSS px (scale by `screenshotW/innerWidth`); an unfocused tab throttles timers, so record events instead of single reads.
-- **Kit render QA:** scaffold a throwaway `src/jobs/<id>/` + manifest in the repo kit, `node node_modules/@remotion/cli/remotion-cli.js render <id> out.mp4 --browser-executable=~/.opencutagent/animation-kit/node_modules/.remotion/chrome-headless-shell/mac-arm64/chrome-headless-shell-mac-arm64/chrome-headless-shell`, pull frames with ffmpeg `select`+`tile`, then restore the empty manifest. Re-run a failed job's render by hand the same way to see the untruncated error; a leftover `remotion-webpack-bundle-*` in tmp means a run that did not exit cleanly. Pixel-art iteration: a PPM generator + ffmpeg is ~2s per round vs ~25s for a still.
-- Phase-0 probes: version-sensitive Premiere APIs (`insertClip`, `overwriteClip`, `createMarker`, `setColorByIndex`, `exportAsFinalCutProXML`) get a `ppro_run_script` probe before you trust a try-ladder.
-- Many features are marked "NOT yet live-verified" in LESSONS.md; when you run one live for the first time, note the result there.
+When a failure costs you a session and you find the fix: one line under the matching heading
+above, the full symptom / cause / fix story at the top of the Borumi section in `docs/LESSONS.md`
+with the date, and, when it is a Borumi behaviour, the exact JSON in the cookbook. Recurring
+operations only; one-off fixes are commit messages.
 
 ## Quick symptom index
 
 | Symptom | Cause / fix |
 |---|---|
-| "0 to cut" after Transcribe | No analysis ran; Transcribe only transcribes. Run Analyze w/ Claude or judge in Sync. |
-| Apply reports "Removed 0/N" instantly | Stale host script; batch ops now self-heal, otherwise `$.evalFile` the jsx. |
-| "Nothing to cut on the timeline" | Cuts already applied earlier (tail removal is invisible near the playhead); footer counts pending cuts only. |
-| ffmpeg ENOENT from the panel | Bare GUI PATH; fixed by `paths.js`, or set `FFMPEG_BIN` in the gear's Advanced panel. |
-| ElevenLabs 401 | Key needs the `speech_to_text` scope; key verification uses that endpoint, not `/v1/user`. |
-| quota_exceeded | Progress is cached per island; Reload only bills the uncovered remainder. |
-| Every segment listed twice | Same footage stacked on V1+V2; `dedupeStackedSegments`. |
-| ffmpeg exit 234 on Load/Scan | A silent clip (a placed animation); skipped via `hasAudioStream`. |
-| Transparent render exit 1 | A CRF set globally with ProRes; keep codec knobs out of remotion.config.ts. |
-| Animation placed at 1920x1080 in a bigger sequence | Read `sequence.frameSize` via `sequenceFrameSize()`; `renderScale` self-heals on the next version. |
-| Image pills invisible in chat | Inline display cleared instead of set. |
-| Panel-spawned AI "OAuth session expired" | `EDITAGENT_CLAUDE_CONFIG_DIR` unset; or `command claude /login` in the default dir. |
-| Health rows all "check failed" | The engine on 3001 predates the `health` RPC (stale server, usually Claude Code's). Kill it once; the panel respawns a fresh one within seconds. |
+| `app_not_running` on every project tool | Borumi is closed, or MCP is off in Settings > AI. `tools/list` and `get_guides` still answer. |
+| `guide_required` | Fetch the named guide on this connection and retry; `borumi_mcp.py` does it once by itself. |
+| `unknown_id_alias` | The id was never listed on this connection. `list_open_projects` / `get_scenes` / `get_timeline`, then retry with the ids they returned. |
+| `get_timeline` refuses a range | Empty project (`duration_ms` 0). Take the hash from `get_project_overview`. |
+| `timeline_layer_not_found` after a delete | The layer's last segment went away. Read without a layer filter. |
+| Untargeted trim refused (`invalid_request`, independent edit sets) | Target the narration set: `{"type":"layers","layer_ids":["camera_1","microphone_1"]}`, then each screen layer, then one overlay layer. |
+| Layout shortened twice after a silence pass | You trimmed `layout` after the screen trim; layouts follow the screen layer. |
+| Animation shows where the recording was | Someone deleted screen content in behind mode. The rule is add on `screen_N` + layout; restore from the bundle. |
+| Beats land at half time | The job was not 30 fps. `job.json` must say `fps: 30` (a unit test pins it). |
+| Render dies at the timeout lookup or on a font | A font request in a style, or a dropped import; `node scripts/check.mjs` and the inlined-fonts rule. |
+| ProRes render throws on `--crf` | A CRF crept into `remotion.config.ts`. Keep codec flags on the command line. |
+| Bash tool kills the render at 600 s | Use `job.mjs render` (detached) + `job.mjs wait`, never `--foreground` in a session. |
+| `node --test tests/` fails with `'test failed'` | Node 21+ treats the directory as a test file. Use `node --test tests/*.test.mjs`. |
+| "mount the drive first" | The project lives on an unmounted volume; `paths.mjs` will not create folders under `/Volumes/<x>` until it is a mount point. |
+| Kit change invisible in the workspace | Preserved guide (a Learnings log) without a guide-version bump, or a removed file the additive sync cannot delete. |

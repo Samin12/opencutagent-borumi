@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Setup"
+  short_description: "check this Mac for everything the borumi plugin needs (Borumi 0.30.5+ with MCP on, Node 18+, ffmpeg, the anima"
+  default_prompt: "Use $borumi-setup to check this machine and install the animation kit workspace."

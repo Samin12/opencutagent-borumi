@@ -1,0 +1,17 @@
+{
+ "project_id": "5842",
+ "scenes": [
+  {
+   "display_name": "Pipeline overview",
+   "end_ms": 20600,
+   "id": "eeaa",
+   "name": "Pipeline overview",
+   "position": 1,
+   "script_markdown": "In this scene I show the three pieces of the pipeline: the recorder, the agent, and the render placed behind the camera.\n\n(ANIMATION: three sketched boxes appear one by one, labeled Recorder, Agent, Render, connected by arrows left to right; the last box slides down behind a small camera frame in the corner.)",
+   "segment_count": 2,
+   "start_ms": 0,
+   "take_count": 1
+  }
+ ],
+ "timeline_hash": "4ffd35a0352c0861"
+}

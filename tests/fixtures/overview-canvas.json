@@ -1,0 +1,37 @@
+{
+ "canvas": {
+  "background": {
+   "end_color": {
+    "b": 67,
+    "g": 67,
+    "r": 67
+   },
+   "start_color": {
+    "b": 0,
+    "g": 0,
+    "r": 0
+   },
+   "type": "gradient"
+  },
+  "fit_screen": {
+   "available": false,
+   "has_multiple_sizes": false,
+   "height_px": null,
+   "width_px": null
+  },
+  "format": {
+   "height_px": 1080,
+   "preset": "landscape",
+   "type": "preset",
+   "width_px": 1920
+  }
+ },
+ "project": {
+  "duration_ms": 0,
+  "name": "jarvis-plugin-smoke-test",
+  "scene_count": 0
+ },
+ "project_id": "a56d",
+ "scenes": [],
+ "timeline_hash": "f07c7eb6ac5819b7"
+}

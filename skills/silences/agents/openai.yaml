@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Silences"
+  short_description: "detect the dead air in a scene or the whole open Borumi project, preview the cut list with totals, and remove "
+  default_prompt: "Use $borumi-silences to preview and remove the dead air in scene 2 of my open Borumi project."

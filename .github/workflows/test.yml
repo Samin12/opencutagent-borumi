@@ -1,5 +1,11 @@
 name: test
 
+# The plugin's own tests need no Borumi, no ffmpeg and no npm install: scripts/ and tests/ are
+# plain ES modules on Node >= 18. The animation kit's node_modules are only needed for renders,
+# which run on the user's Mac, so there is no `npm ci` here on purpose.
+# `tests/*.test.mjs` is expanded by the shell: `node --test <dir>` treats the directory as a test
+# file on Node 21+ and fails, and Node 20 cannot expand a glob itself.
+
 on:
   push:
     branches: [main]
@@ -7,22 +13,19 @@ on:
 
 jobs:
   test:
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-latest
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
-        node: [18, 20, 22]
+        node: [20, 22]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-          cache: npm
-          cache-dependency-path: server/package-lock.json
-      - run: npm ci
-        working-directory: server
-      - run: npm run check
-        working-directory: server
-      - run: npm test
-        working-directory: server
+      - name: Syntax and import check
+        run: node scripts/check.mjs
+      - name: Python client parses
+        run: python3 -m py_compile scripts/borumi_mcp.py
+      - name: Unit tests
+        run: node --test tests/*.test.mjs

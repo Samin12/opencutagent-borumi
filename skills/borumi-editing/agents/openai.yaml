@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Editing"
+  short_description: "the shared editing base that every /borumi command loads first."
+  default_prompt: "Use $borumi-editing before any Borumi edit: transaction discipline, tool map, and the verified quirks."

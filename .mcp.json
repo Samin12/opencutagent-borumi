@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "borumi": {
+      "type": "stdio",
+      "command": "/Applications/Borumi.app/Contents/MacOS/borumi",
+      "args": ["mcp"],
+      "timeout": 600000
+    }
+  }
+}

@@ -1,0 +1,75 @@
+{
+ "layers": [
+  {
+   "id": "microphone_1",
+   "kind": "microphone",
+   "segments": [
+    {
+     "end_ms": 20600,
+     "items": [
+      [
+       100,
+       740,
+       "In this scene,"
+      ],
+      [
+       740,
+       3560,
+       "I am going to show you the three pieces of the pipeline."
+      ],
+      [
+       3820,
+       4310,
+       "First,"
+      ],
+      [
+       4450,
+       7790,
+       "the recorder captures your camera and your screen as separate layers."
+      ],
+      [
+       7930,
+       8540,
+       "Second,"
+      ],
+      [
+       8680,
+       13700,
+       "the agent reads the transcript and designs an animation for exactly this stretch of narration."
+      ],
+      [
+       13840,
+       14450,
+       "And third,"
+      ],
+      [
+       14590,
+       16550,
+       "the render is placed behind the camera."
+      ],
+      [
+       16690,
+       20586,
+       "So the presenter stays pinned on top while the animation fills the frame."
+      ]
+     ],
+     "media_id": "871a",
+     "media_range": {
+      "end_ms": 20600,
+      "start_ms": 0
+     },
+     "scene_id": "eeaa",
+     "segment_id": "95dd",
+     "start_ms": 0
+    }
+   ]
+  }
+ ],
+ "mode": "blocks",
+ "project_id": "5842",
+ "range": {
+  "end_ms": 20600,
+  "start_ms": 0
+ },
+ "timeline_hash": "4ffd35a0352c0861"
+}

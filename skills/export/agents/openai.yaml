@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Export"
+  short_description: "export the open Borumi project, one scene or a range to a video file next to the project (preset or custom siz"
+  default_prompt: "Use $borumi-export to export scene 3 at 1080p and give me a phone-sized copy."

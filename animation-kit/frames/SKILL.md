@@ -1,24 +1,25 @@
-<!-- guide-version: 3 -->
+<!-- guide-version: 4 -->
 # Frame-aware animation guide
 
 This job is a TRANSPARENT overlay that draws ON the user's actual footage: circling the button
 they are talking about, underlining on-screen text, an arrow to the panel they mention, a sketch
-box around a UI region. The video plays UNDER your clip on the Premiere timeline, so everything
+box around a UI region. The video plays UNDER your clip on the Borumi timeline (a front-mode
+placement is a full-frame media overlay above every layer, the camera included), so everything
 you draw must line up with what is really on screen, in position AND in time. This guide is the
 workflow for seeing the footage, anchoring to it, and PROVING each anchor holds.
 
 ## What you have
 
-- `public/frames/<jobId>/full/t0012.50.png` — a frame of the sequence every `step` seconds
-  (0.5s by default) across the whole animation, at canvas resolution. These are Premiere's OWN
-  render of what plays under your overlay (the animation track hidden): every transform, crop
-  and punch-in is baked in. A pixel in these frames IS a canvas coordinate. Trust them over any
-  memory of the source recording.
-- `public/frames/<jobId>/sheets/sheet-....png` — contact sheets of those frames, 12 per sheet,
+- `public/frames/<jobId>/full/t0012.50.png`: a frame of the composite every `step` seconds
+  (0.5s by default) across the whole animation, at canvas resolution. These are Borumi's OWN
+  inspect of the timeline (`inspect_timeline`, view `render`, quality high) taken before your
+  overlay exists: every layout, crop, zoom and the pinned camera are baked in. A pixel in these
+  frames IS a canvas coordinate. Trust them over any memory of the source recording.
+- `public/frames/<jobId>/sheets/sheet-....png`: contact sheets of those frames, 12 per sheet,
   row-major, in time order (the file name carries the first and last time; `sheets[].times` in
   the map lists every tile's time). Cheap to Read in bulk: your first survey of what is on
   screen WHEN.
-- `src/jobs/<jobId>/frames-map.json` — the map of everything:
+- `src/jobs/<jobId>/frames-map.json`: the map of everything:
   - `frames`: `[{t, file}]` every exported frame (rel seconds -> file under `full/`).
   - `changes`: `[{t, score, kind}]` screen changes: at time `t` the frame differs from the one
     before it. `kind: "major"` = a new shot (a panel opened, a page changed, a window swapped);
@@ -28,21 +29,26 @@ workflow for seeing the footage, anchoring to it, and PROVING each anchor holds.
     drawing must live entirely inside ONE shot**, and `dur` is the most an annotation there can
     have (see the time budget below).
   - `black`: rel-time ranges where the screen is black (free canvas there).
+  - `keepOut`: when present, a rectangle in canvas RATIOS (`{x, y, w, h}`, for the pinned camera
+    `{x:0.775, y:0.715, w:0.225, h:0.285}`) that the presenter's camera covers. Nothing anchored
+    may sit inside it and no label may cross into it: the check FAILs anchors there. Multiply by
+    the canvas size to get pixels. Absent when no camera is pinned over the range.
   - `canvas`: width/height/fps. `relSec * fps = frame number`. `step`: seconds between frames.
-  - `source`: `"sequence"` (Premiere's frames, exact) or `"media"` (a fallback decode of the
-    V1 source file: positions and timing are a GUESS there, so keep margins generous and say
-    so in your reply if something depends on it).
-- `scripts/grab-frames.mjs` — cuts readable frames out of `full/` (downscaled full frames, or
-  1:1 crops for measuring). Instant, no Premiere involved.
-- `scripts/check-anchors.mjs` — checks every anchor you declared against the frames and writes
+  - `source`: `"borumi"` (Borumi's inspect frames, exact) or `"media"` (a fallback decode of a
+    media file with ffmpeg: positions and timing are a GUESS there, so keep margins generous and
+    say so in your reply if something depends on it).
+- `scripts/grab-frames.mjs`: cuts readable frames out of `full/` (downscaled full frames, or
+  1:1 crops for measuring). Instant, no Borumi involved.
+- `scripts/check-anchors.mjs`: checks every anchor you declared against the frames and writes
   a sheet per anchor (just before / start / middle / end / just after, target outlined).
-- `<DebugFrame src="frames/<jobId>/full/t0012.50.png" />` (from `../../components`) — renders a
+- `<DebugFrame src="frames/<jobId>/full/t0012.50.png" />` (from `../../components`): renders a
   footage frame under your overlay in stills so you SEE a drawing on its target. It renders
   nothing in the final delivered clip, so it can stay in the scene.
 
 ## Workflow
 
-1. Read `frames-map.json` and the narration in `brief.md`. Note `shots`, `changes`, `black`.
+1. Read `frames-map.json` and the narration in `brief.md`. Note `shots`, `changes`, `black`,
+   `keepOut`.
 2. Read ALL the contact sheets (they are small). Now you know what is on screen when, and where
    the screen changes. Cross-check the `changes` times with what you see.
 3. From the narration and the user's message, decide WHICH moments need anchored drawings:
@@ -109,11 +115,11 @@ Rules of thumb:
 
 The check samples the frames from one step before `from` to one step after `to`, compares the
 rect across them, and reports: **FAIL** when the region changes inside the span (the target is
-not there yet at the start, or gone before the end, or replaced mid-way) or when the declared
-text can't be read in the time the target is visible, **WARN** for small changes (a cursor pass,
-a caret), **OK** when the region holds. The server runs the SAME check when you signal
-render.json; a FAIL comes back to you as an automatic message and the render waits for your fix.
-Run it yourself first and save the round trip.
+not there yet at the start, or gone before the end, or replaced mid-way), when the declared
+text can't be read in the time the target is visible, or when the rect overlaps `keepOut`;
+**WARN** for small changes (a cursor pass, a caret); **OK** when the region holds.
+`job.mjs anchors <jobId>` runs the SAME check before every render; a FAIL blocks the render
+until you fix it. Run it yourself first and save the round trip.
 
 ## Positioning rules
 
@@ -121,13 +127,16 @@ Run it yourself first and save the round trip.
   "roughly where buttons usually are".
 - Never ship an anchored drawing you have not seen composited over the real frame. Put
   `<DebugFrame src="frames/<jobId>/full/<the frame at that beat>" />` as the FIRST child inside
-  `<Canvas transparent>`, render a still at the matching frame number (`round(relSec * fps)`),
-  Read the PNG, and check the drawing sits on its target. Off by more than a few pixels: fix and
-  re-check. Do this at the START and the END of each anchored drawing (two stills), not just
-  once in the middle: the two failure modes that reach the user are a drawing that starts before
-  its target appears and one that stays after the screen changed.
+  `<Canvas transparent>`, render a still at the matching frame number (`round(relSec * fps)`)
+  with `job.mjs still <jobId> --frame <n> --out <png>`, Read the PNG, and check the drawing sits
+  on its target. Off by more than a few pixels: fix and re-check. Do this at the START and the
+  END of each anchored drawing (two stills), not just once in the middle: the two failure modes
+  that reach the user are a drawing that starts before its target appears and one that stays
+  after the screen changed.
 - A circle/box around an element should breathe: pad ~8-16 canvas px around the element's true
   bounds so the sketch stroke doesn't cover what it points at.
+- Keep everything out of `keepOut`: the presenter sits there and an overlay renders above the
+  camera, so a stroke or label in that corner draws over his face.
 - If the footage moves (scrolling, window dragged), the region will not be stable: either track
   the element with keyframed positions (declare `expectMotion`) or keep the annotation to the
   still part of the shot.

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Chapters"
+  short_description: "add chapter title cards to the open Borumi project in Samin's Astra card style and write the YouTube chapters "
+  default_prompt: "Use $borumi-chapters to add chapter cards to my project and write the YouTube chapters file."

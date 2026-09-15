@@ -1,0 +1,29 @@
+{
+ "frames": [
+  {
+   "height": 1080,
+   "image_index": 0,
+   "path": "/Users/saminyasar/Library/Application Support/borumi/temp/control-media/dcee60df-9408-4ef2-98ab-8e5c0ae9ac4a/frame-000-750.jpg",
+   "time_ms": 750,
+   "width": 1920
+  },
+  {
+   "height": 1080,
+   "image_index": 1,
+   "path": "/Users/saminyasar/Library/Application Support/borumi/temp/control-media/dcee60df-9408-4ef2-98ab-8e5c0ae9ac4a/frame-001-2250.jpg",
+   "time_ms": 2250,
+   "width": 1920
+  }
+ ],
+ "presentation": "frames",
+ "project_id": "a56d",
+ "quality": "max",
+ "range": {
+  "end_ms": 3000,
+  "start_ms": 0
+ },
+ "timeline_hash": "b490e2dd70cf56d2",
+ "view": {
+  "type": "render"
+ }
+}

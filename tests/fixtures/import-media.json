@@ -1,0 +1,16 @@
+{
+ "import_id": "863b6082-d02f-4025-8b43-054343f0565f",
+ "media": {
+  "duration_ms": 3000,
+  "height_px": 1080,
+  "id": "87d7",
+  "name": "overlay-alpha",
+  "tracks": [
+   "video"
+  ],
+  "width_px": 1920
+ },
+ "project_id": "a56d",
+ "status": "completed",
+ "tx_id": "b1ff"
+}

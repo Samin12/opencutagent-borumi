@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Open"
+  short_description: "list the recent and open Borumi projects, open one by name or path, and bring it to the front in the app."
+  default_prompt: "Use $borumi-open to open my most recent Borumi project."

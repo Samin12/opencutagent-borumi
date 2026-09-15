@@ -1,21 +1,22 @@
 {
-  "name": "opencutagent",
+  "name": "borumi-plugin",
   "version": "0.1.0",
   "private": true,
+  "type": "module",
   "license": "SEE LICENSE IN LICENSE",
-  "description": "OpenCutAgent — Premiere Pro CEP panel + Node bridge/MCP server for live-timeline video editing.",
+  "description": "Claude Code plugin: Borumi editing and scene visualization with the OpenCutAgent animation kit.",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/leonardogrig/opencutagent.git"
+    "url": "git+https://github.com/Samin12/opencutagent-borumi.git"
+  },
+  "engines": {
+    "node": ">=18"
   },
   "scripts": {
-    "start": "node server/index.js",
-    "server": "node server/index.js",
-    "stop": "lsof -ti tcp:3001 -sTCP:LISTEN | xargs kill 2>/dev/null || true",
-    "restart": "npm run stop; node server/index.js",
-    "setup": "npm install --prefix server",
-    "test": "npm test --prefix server",
-    "check": "npm run check --prefix server",
-    "eval:retakes": "node server/test/eval/evalRetakes.mjs"
+    "test": "node --test 'tests/*.test.mjs'",
+    "check": "node scripts/check.mjs",
+    "smoke": "node tests/smoke.mjs",
+    "doctor": "bash scripts/doctor.sh",
+    "kit": "node scripts/kit.mjs ensure"
   }
 }

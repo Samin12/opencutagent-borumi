@@ -1,24 +1,21 @@
 node_modules/
 .cache/
-.env
 *.log
-
-# machine-specific (copy the .example files and edit the paths/keys)
-.mcp.json
-.claude/settings.local.json
-server/.claude/
-
-# retake eval: saved headless AI runs (regenerated each run; not source)
-server/test/eval/out/
-
-# macOS / Windows
 .DS_Store
-Thumbs.db
-design_samples/
 
-# private style package (not for the public repo)
-animation-kit/styles/n8n-ui/
-animation-kit/styles/n8n-brand/
-# ported from the private 8bit-n8n-game repo, and the character derives from
-# n8n's own Builders artwork. Delete this line to ship it publicly.
-animation-kit/styles/n8n-game/
+# animation kit: job folders and renders are per-machine workspace state
+animation-kit/out/
+animation-kit/src/jobs/*/
+!animation-kit/src/jobs/manifest.ts
+!animation-kit/src/jobs/types.ts
+animation-kit/public/frames/
+animation-kit/.kit-version
+animation-kit/.deps-hash
+
+# tests
+tests/.tmp/
+
+# machine-specific
+.claude/settings.local.json
+__pycache__/
+*.pyc

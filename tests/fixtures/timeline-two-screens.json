@@ -1,0 +1,547 @@
+{
+ "duration_ms": 11500,
+ "layers": [
+  {
+   "category": "content",
+   "id": "camera_1",
+   "kind": "camera",
+   "segment_count": 2,
+   "segments": [
+    {
+     "end_ms": 9500,
+     "id": "5e7d",
+     "media": {
+      "clip_id": "3c98",
+      "end_ms": 9500,
+      "media_id": "bc02",
+      "source_scene_id": "b15a",
+      "speed": 1.0,
+      "start_ms": 0,
+      "take_id": "fe76"
+     },
+     "properties": {
+      "face_tracking_mode": "disabled",
+      "transition": {
+       "kind": "auto"
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 0,
+     "type": "video"
+    },
+    {
+     "end_ms": 11500,
+     "id": "9a94",
+     "media": {
+      "clip_id": "3c98",
+      "end_ms": 12000,
+      "media_id": "bc02",
+      "source_scene_id": "b15a",
+      "speed": 1.0,
+      "start_ms": 10000,
+      "take_id": "fe76"
+     },
+     "properties": {
+      "face_tracking_mode": "disabled",
+      "transition": {
+       "kind": "auto"
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 9500,
+     "type": "video"
+    }
+   ]
+  },
+  {
+   "category": "content",
+   "id": "screen_1",
+   "kind": "screen",
+   "segment_count": 1,
+   "segments": [
+    {
+     "end_ms": 3000,
+     "id": "a459",
+     "media": {
+      "clip_id": "094d",
+      "end_ms": 3000,
+      "media_id": "8df6",
+      "source_scene_id": "b15a",
+      "speed": 1.0,
+      "start_ms": 0,
+      "take_id": "7916"
+     },
+     "properties": {
+      "face_tracking_mode": "auto",
+      "transition": {
+       "kind": "auto"
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 0,
+     "type": "video"
+    }
+   ]
+  },
+  {
+   "category": "content",
+   "id": "screen_2",
+   "kind": "screen",
+   "segment_count": 1,
+   "segments": [
+    {
+     "end_ms": 3500,
+     "id": "b054",
+     "media": {
+      "clip_id": "8900",
+      "end_ms": 3000,
+      "media_id": "8df6",
+      "source_scene_id": "b15a",
+      "speed": 1.0,
+      "start_ms": 0,
+      "take_id": "f228"
+     },
+     "properties": {
+      "face_tracking_mode": "auto",
+      "transition": {
+       "kind": "auto"
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 500,
+     "type": "video"
+    }
+   ]
+  },
+  {
+   "category": "content",
+   "id": "microphone_1",
+   "kind": "microphone",
+   "segment_count": 2,
+   "segments": [
+    {
+     "end_ms": 9500,
+     "id": "6e83",
+     "media": {
+      "clip_id": "9b95",
+      "end_ms": 9500,
+      "media_id": "bc02",
+      "source_scene_id": "b15a",
+      "speed": 1.0,
+      "start_ms": 0,
+      "take_id": "fe76"
+     },
+     "properties": {
+      "voice_enhancement_filter": "disabled"
+     },
+     "scene_id": "b15a",
+     "start_ms": 0,
+     "type": "audio"
+    },
+    {
+     "end_ms": 11500,
+     "id": "1856",
+     "media": {
+      "clip_id": "9b95",
+      "end_ms": 12000,
+      "media_id": "bc02",
+      "source_scene_id": "b15a",
+      "speed": 1.0,
+      "start_ms": 10000,
+      "take_id": "fe76"
+     },
+     "properties": {
+      "voice_enhancement_filter": "disabled"
+     },
+     "scene_id": "b15a",
+     "start_ms": 9500,
+     "type": "audio"
+    }
+   ]
+  },
+  {
+   "category": "overlays",
+   "id": "media_overlay_1",
+   "kind": "media_overlay",
+   "segment_count": 2,
+   "segments": [
+    {
+     "end_ms": 6000,
+     "id": "68e3",
+     "media": {
+      "end_ms": 3000,
+      "media_id": "3283",
+      "speed": 1.0,
+      "start_ms": 0
+     },
+     "properties": {
+      "entrance_transition": {
+       "kind": "instant"
+      },
+      "exit_transition": {
+       "kind": "instant"
+      },
+      "lock_aspect_ratio": false,
+      "position": {
+       "height_ratio": 1.0,
+       "kind": "custom",
+       "width_ratio": 1.0,
+       "x_ratio": 0.0,
+       "y_ratio": 0.0
+      },
+      "shadow": {
+       "blur_ratio": 0.018518518518518517,
+       "color": {
+        "a": 100,
+        "b": 0,
+        "g": 0,
+        "r": 0
+       },
+       "x_offset_ratio": 0.0,
+       "y_offset_ratio": 0.018518518518518517
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 3000,
+     "type": "media_overlay"
+    },
+    {
+     "end_ms": 2500,
+     "id": "f81c",
+     "media": {
+      "end_ms": 2000,
+      "media_id": "61bf",
+      "speed": 1.0,
+      "start_ms": 0
+     },
+     "properties": {
+      "entrance_transition": {
+       "kind": "fade"
+      },
+      "exit_transition": {
+       "kind": "fade"
+      },
+      "lock_aspect_ratio": false,
+      "position": {
+       "height_ratio": 1.0,
+       "kind": "custom",
+       "width_ratio": 1.0,
+       "x_ratio": 0.0,
+       "y_ratio": 0.0
+      },
+      "shadow": {
+       "blur_ratio": 0.018518518518518517,
+       "color": {
+        "a": 100,
+        "b": 0,
+        "g": 0,
+        "r": 0
+       },
+       "x_offset_ratio": 0.0,
+       "y_offset_ratio": 0.018518518518518517
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 500,
+     "type": "media_overlay"
+    }
+   ]
+  },
+  {
+   "category": "overlays",
+   "id": "text_overlay_1",
+   "kind": "text_overlay",
+   "segment_count": 1,
+   "segments": [
+    {
+     "end_ms": 9000,
+     "id": "ef6e",
+     "media": null,
+     "properties": {
+      "alignment": "left",
+      "background_color": {
+       "a": 239,
+       "b": 47,
+       "g": 31,
+       "r": 17
+      },
+      "background_horizontal_padding_ratio": 0.3,
+      "background_sizing_mode": "paragraph",
+      "background_vertical_padding_ratio": 0.22,
+      "bold": true,
+      "border_radius_ratio": 0.016,
+      "entrance_transition": {
+       "kind": "fade"
+      },
+      "exit_transition": {
+       "kind": "instant"
+      },
+      "font_families": [
+       "DM Sans"
+      ],
+      "line_height": 1.13,
+      "lock_aspect_ratio": false,
+      "position": {
+       "height_ratio": 0.16,
+       "kind": "custom",
+       "width_ratio": 0.7,
+       "x_ratio": 0.055,
+       "y_ratio": 0.76
+      },
+      "sizing_mode": "fixed",
+      "text": "01  Smoke test chapter",
+      "text_color": {
+       "a": 255,
+       "b": 255,
+       "g": 255,
+       "r": 255
+      },
+      "text_shadow": false,
+      "text_size": 62.0
+     },
+     "scene_id": "b15a",
+     "start_ms": 6000,
+     "type": "text_overlay"
+    }
+   ]
+  },
+  {
+   "category": "control",
+   "id": "music",
+   "kind": "music",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "layout",
+   "kind": "layout",
+   "segment_count": 1,
+   "segments": [
+    {
+     "end_ms": 3000,
+     "id": "2ca5",
+     "media": null,
+     "properties": {
+      "kind": "custom",
+      "sources": [
+       {
+        "border_radius_ratio": 0.0,
+        "height_ratio": 1.0,
+        "layer_id": "screen_1",
+        "lock_aspect_ratio": false,
+        "overflow": false,
+        "width_ratio": 1.0,
+        "x_ratio": 0.0,
+        "y_ratio": 0.0
+       },
+       {
+        "border_radius_ratio": 0.0284,
+        "corner_shape": "squircle_v2",
+        "height_ratio": 0.25,
+        "layer_id": "camera_1",
+        "lock_aspect_ratio": false,
+        "overflow": false,
+        "shadow": {
+         "blur_ratio": 0.0185,
+         "color": {
+          "a": 100,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         "x_offset_ratio": 0.0,
+         "y_offset_ratio": 0.0185
+        },
+        "width_ratio": 0.21,
+        "x_ratio": 0.775,
+        "y_ratio": 0.715
+       }
+      ],
+      "transition": {
+       "kind": "instant"
+      }
+     },
+     "scene_id": "b15a",
+     "start_ms": 0,
+     "type": "layout"
+    }
+   ]
+  },
+  {
+   "category": "control",
+   "id": "screen_zoom",
+   "kind": "screen_zoom",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "camera_zoom",
+   "kind": "camera_zoom",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "screen_blur",
+   "kind": "screen_blur",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "screen_highlight",
+   "kind": "screen_highlight",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "captions",
+   "kind": "captions",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "cursor",
+   "kind": "cursor",
+   "segment_count": 0,
+   "segments": []
+  },
+  {
+   "category": "control",
+   "id": "background",
+   "kind": "background",
+   "segment_count": 0,
+   "segments": []
+  }
+ ],
+ "project_id": "a56d",
+ "range": {
+  "end_ms": 11500,
+  "start_ms": 0
+ },
+ "scenes": [
+  {
+   "edit_spans": [
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ],
+      [
+       "screen_1"
+      ],
+      [
+       "layout"
+      ]
+     ],
+     "end_ms": 500,
+     "start_ms": 0
+    },
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ],
+      [
+       "screen_1"
+      ],
+      [
+       "screen_2"
+      ],
+      [
+       "media_overlay_1"
+      ],
+      [
+       "layout"
+      ]
+     ],
+     "end_ms": 2500,
+     "start_ms": 500
+    },
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ],
+      [
+       "screen_1"
+      ],
+      [
+       "screen_2"
+      ],
+      [
+       "layout"
+      ]
+     ],
+     "end_ms": 3000,
+     "start_ms": 2500
+    },
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ],
+      [
+       "screen_2"
+      ],
+      [
+       "media_overlay_1"
+      ]
+     ],
+     "end_ms": 3500,
+     "start_ms": 3000
+    },
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ],
+      [
+       "media_overlay_1"
+      ]
+     ],
+     "end_ms": 6000,
+     "start_ms": 3500
+    },
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ],
+      [
+       "text_overlay_1"
+      ]
+     ],
+     "end_ms": 9000,
+     "start_ms": 6000
+    },
+    {
+     "edit_sets": [
+      [
+       "camera_1",
+       "microphone_1"
+      ]
+     ],
+     "end_ms": 11500,
+     "start_ms": 9000
+    }
+   ],
+   "end_ms": 11500,
+   "id": "b15a",
+   "name": "Smoke scene",
+   "start_ms": 0
+  }
+ ],
+ "timeline_hash": "e7c6f3c0f176830b",
+ "tx_id": "33bf"
+}

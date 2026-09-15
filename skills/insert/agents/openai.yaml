@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Insert"
+  short_description: "insert a local image, video, gif or audio file into the open Borumi project at a time: in front as an overlay "
+  default_prompt: "Use $borumi-insert to put this b-roll clip at 1:23 for 4 seconds behind my camera."

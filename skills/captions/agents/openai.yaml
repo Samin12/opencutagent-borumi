@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Captions"
+  short_description: "add speech-synced captions to a scene or the whole open Borumi project with one of Borumi's caption templates "
+  default_prompt: "Use $borumi-captions to add styled captions to scene 1."

@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Visualize"
+  short_description: "design a Remotion animation for a stretch of narration in the open Borumi project, render it, and place it beh"
+  default_prompt: "Use $borumi-visualize to design and render an animation for scene 3 of my open Borumi project and place it behind my camera."

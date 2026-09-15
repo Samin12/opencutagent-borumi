@@ -1,68 +1,195 @@
-# OpenCutAgent architecture
+# borumi plugin architecture
 
-OpenCutAgent lets Claude (or the panel's own buttons) edit a video on Adobe Premiere Pro's **live timeline**: transcribe what is said, decide what to cut (retakes, false starts, dead air), and apply the cuts to the real sequence, undoably. This page explains how the pieces talk and why the load-bearing design decisions look the way they do.
+The plugin lets a Claude Code session edit a Borumi project the way an editor would: read the
+scenes and the transcript, propose a change with exact times, get a yes, apply it inside one of
+Borumi's own transactions, verify by re-reading the timeline. Its flagship turns a stretch of
+narration into a rendered Remotion animation placed behind the presenter's camera or in front of
+the footage. This page says how the pieces talk and why the load-bearing decisions look the way
+they do.
 
-## The four pieces
+## The pieces
 
 ```
-Claude Code ──stdio──► MCP server (server/) ──ws 127.0.0.1:3001──► CEP panel (cep-panel/client) ──evalScript──► premiere.jsx
-             MCP tools   Node: ffmpeg, Scribe,                        UI, waveform, review list        ALL Premiere DOM access
-             (ppro_*)    cut math, headless claude                    auto-reconnects
+Claude Code session (skills/*)  ──MCP stdio──►  Borumi.app  (`borumi mcp`, 45 tools, guide-gated)
+        │ Bash                                   transactions, scenes, transcript, timeline, import, inspect, export
+        ▼
+scripts/*.mjs, doctor.sh, borumi_mcp.py     pure planning + file work; JSON out, logs to stderr
+        │
+        ▼
+~/.borumi-agent/animation-kit  (kit workspace: Remotion, styles, src/jobs/<id>/, public/frames/)
+        │ job.mjs render (detached)
+        ▼
+<project name> Agent/animations/<jobId>/<jobId>-v<N>.mp4|.mov  ──import_media──►  the .bmprojbundle
 ```
 
-- **MCP server** (`server/`): the brain. Hosts the WebSocket bridge the panel connects to, exposes the `ppro_*` MCP tools to Claude Code, runs ffmpeg (loudness envelopes, audio extraction), calls ElevenLabs Scribe (transcription), computes every cut list, and, for the panel's AI buttons, spawns headless `claude -p` calls. All in-memory session state lives here: `ctx.review` (loaded segments + keep/cut marks) and `ctx.silence` (loudness session).
-- **CEP panel** (`cep-panel/client/`): the face. A plain HTML/JS/CSS panel inside Premiere. It is **only a WebSocket client + evalScript proxy**: it renders state pushed by the server, forwards host operations to ExtendScript, and never computes cut decisions itself.
-- **Host script** (`cep-panel/host/premiere.jsx`): the only file that touches Premiere's scripting API. Every operation is dispatched as `$.editagent.dispatch(action, params)` and returns JSON. It is ExtendScript (ES3) and wraps version-sensitive Premiere APIs in try-ladders.
-- **Skills** (`.claude/skills/`): teach a Claude Code session the editing workflows (read, propose, confirm, execute, verify). The same skill text is injected into headless calls so both AI modes share one source of truth.
+- **The session is the operator.** There is no server. A skill tells the session which Borumi
+  tools to call in which order, which script to run for the pure work, and what to print. The
+  Borumi tools are `mcp__plugin_borumi_borumi__<tool>`; the server is declared once in
+  `.mcp.json` at the plugin root.
+- **Borumi's MCP is the only writer.** Every project change is a transaction:
+  `begin_project_edit` returns a `tx_id`, structural calls carry the latest `timeline_hash` and
+  the hash is re-read after each, `commit_project_edit` takes a one-sentence summary that Claude
+  Code shows in its permission prompt. That prompt is the approval gate; `commit_project_edit`
+  is in no skill's allowlist on purpose.
+- **Scripts do the deterministic work** so the session does not: job lifecycle (`job.mjs`),
+  kit sync (`kit.mjs`), frames maps (`frames.mjs`), sentence segmentation and cut planning
+  (`segments.mjs`), chapters (`chapters.mjs`), placement plans (`placement.mjs`), the doctor
+  (`doctor.sh`), and the cross-agent client (`borumi_mcp.py`, with `place.py` running a
+  placement plan end to end on one daemon connection for Codex or batch runs). Pure modules
+  under `scripts/lib/` are unit tested against real Borumi responses in `tests/fixtures/`.
+- **The kit workspace lives outside the plugin.** `kit.mjs ensure` copies `animation-kit/` to
+  `~/.borumi-agent/animation-kit` (hash stamped, additive, preserving guides that carry a
+  Learnings log), runs `npm install` when `package.json` changed and downloads Remotion's
+  headless Chrome. Outside the plugin because `node_modules` and job folders churn, and because a
+  Claude Code session working in the workspace must not inherit this repository's `CLAUDE.md`.
 
-### Who starts the server
+## Guides and ids
 
-There is **one server per machine** (port 3001, or `PREMIERE_BRIDGE_PORT`); it operates on whatever sequence is active in Premiere. Three launchers, deliberately collision-safe:
+Borumi gates tools per connection: `get_guides` with no arguments first, then one guide id per
+call before the tool that needs it. The 4-hex ids Borumi returns are stable across connections
+but must be observed on the current one before use, so every command begins with
+`list_open_projects` and reads the range it will touch before acting, even when a job record
+already holds the ids. A `tx_id` exists only on the connection that began it. This is why the
+session executes its own transactions and why a batch run does everything on one
+`borumi_mcp.py` daemon.
 
-1. **The panel auto-starts it.** When a connect attempt fails, `main.js` spawns `node server/index.js` (check-first: it only spawns after a failed connect, so it never fights an existing server). Just opening the panel is enough for headless use.
-2. **Claude Code spawns it** via `.mcp.json` (stdio) when a session opens in the project. Required for Sync mode (chat drives the tools). Start the session first so its server owns the port; the panel then connects instead of auto-starting.
-3. **Manually:** `npm start` or `./start-opencutagent.command`.
+## Job lifecycle (`/borumi:visualize`)
 
-The bound port is written to `~/.editagent/bridge-port` so the panel finds the server even when the port had to move.
+1. **Resolve** the target to project milliseconds: `scene N`, a bare time or range, `scene N
+   from A to B` (scene-relative), a quoted sentence matched at word level and snapped to block
+   boundaries, or the UI selection / playhead scene from `get_ui_state`. Ranges crossing a scene
+   boundary are refused. The resolved range is printed both ways.
+2. **Gather**: `get_transcript` words for the range, blocks for the scene and its two
+   neighbours, the scene Script (for `(ANIMATION: ...)` beats and `[IMAGE: refs/...]`),
+   `get_project_overview` for the canvas, `get_timeline` segments for the range. Raw responses
+   go under the deliverable folder as receipts.
+3. **Create** with `job.mjs create`: `src/jobs/<id>/{job.json, Scene.tsx, brief.md, words.json,
+   refs/}` in the workspace, `manifest.ts` regenerated, the deliverable folder created. The
+   brief keeps upstream's section format (narration lines with word timings, the context
+   transcript with `>>>` marks) plus `## Placement` and, when there is one, `## The user's plan
+   for this beat`. `fps` is 30 and `durationInFrames = floor(range_ms / (1000/30))`, so the
+   render is never longer than the range; the effective end is written back to the job.
+4. **Frames** (front mode with `--frames`): `inspect_timeline` renders the composite at canvas
+   size every 0.5 s; `frames.mjs from-borumi` writes `public/frames/<id>/full/tNNNN.NN.png`,
+   contact sheets and `frames-map.json` v2 (`source: "borumi"`, `changes`, `shots`, `black`,
+   and a `keepOut` rectangle where the camera is pinned).
+5. **Design**: the session, or the `animator` subagent with `--delegate`, reads `brief.md`, the
+   kit `GUIDE.md`, the style's `SKILL.md` and `frames/SKILL.md` when frame-aware, writes
+   `Scene.tsx`, runs `job.mjs typecheck` and `job.mjs still`, looks at the stills, runs
+   `job.mjs anchors` for frame-aware jobs, then writes `render.json {version, notes, title}`.
+6. **Render**: `job.mjs render <id>` forks Remotion with the kit's own CLI entry, writes
+   `render-status.json` on every progress line and returns; `job.mjs wait` polls in slices
+   under the Bash tool's 600 s limit. Behind mode renders h264 crf 14 mp4, front mode ProRes 4444
+   `yuva444p10le` mov; `--muted` unless the style declares audio; `--props={"final":true}`;
+   two attempts on transient errors; a stall watchdog instead of a wall-clock cap; a finishing
+   remux; a duration check against the range. A workspace lock serialises renders.
+7. **Place** (one transaction, plan from `placement.mjs`): see the planner below.
+8. **Iterate**: v1 places automatically. Every later design turn renders, shows a six-frame
+   contact sheet and asks "Place vN into Borumi?"; on yes the old pieces are removed and the new
+   ones placed in the same transaction. `~/.borumi-agent/current.json` makes plain follow-ups
+   design turns on the current job. Superseded renders stay in the bundle (Borumi copies every
+   import and the MCP cannot delete media), and the command says so once.
+9. **Record**: `job.json` carries `placed` (mode, version, layer id, take and layout segment
+   ids, replaced layouts and controls, commit id, times), `imported_media_ids` over the job's
+   life, and `log.jsonl` receives every note, error and placement before anything is reported.
 
-## The two AI modes
+## The placement planner
 
-The "AI analysis" (which take to keep, what threshold counts as silence) is always **Claude itself**; there is no external LLM API. The panel's "Sync with Claude Code" toggle picks the transport:
+`placement.mjs` turns a fresh `get_timeline` read plus the job facts into an ordered list of
+Borumi calls; the session executes them with hash re-reads between structural steps.
 
-- **OFF (default, headless):** the panel's "Analyze w/ Claude" / "Suggest threshold" buttons call server RPCs that spawn `claude -p` on the user's subscription (`server/ai.js`). The call is a pure judgment oracle: segment data in, JSON decision out (enforced by `--json-schema`), with **no tools and no MCP config** (`--strict-mcp-config`, `--tools ""`, cwd outside the project) so it can never touch Premiere or spawn a second bridge.
-- **ON (Sync):** the buttons defer to the user's live Claude Code chat. Claude calls the `ppro_*` tools and pushes results to the panel (`reviewUpdate`, `silenceConfig` messages).
+**Behind the camera** (solid background). Add a take `{media_id, video_kind: "screen"}` at
+`start_ms`. When `screen_1` already has content there, Borumi puts the take on `screen_2` (or the
+next free screen layer) and nothing recorded is touched. Re-read, find the new video segment by
+`media.media_id` and `start_ms`, set `face_tracking_mode: "disabled"` and a cut transition. Then
+the layout: any layout segment overlapping `[start, end]` is split at the boundaries inside it,
+the inner piece deleted with `ripple: false` and recorded in `placed.replaced_layouts`; a custom
+layout for exactly the range puts the new screen layer full frame first and `camera_1` last in
+the measured bottom-right rectangle (squircle corners, drop shadow). On a non-landscape canvas
+Borumi's `corner` layout is used; on a scene without camera, `fullscreen`. Overlapping
+`screen_zoom`, `screen_highlight` and `screen_blur` segments are split, their inner pieces
+deleted and recorded in `placed.replaced_controls`; `cursor` is left alone. After the add the
+planner asserts the project duration and every later scene's start are unchanged.
 
-Both modes write the same server state, so results render identically in the panel.
+**In front** (transparent). A `media_overlay` for the range with a custom full-frame position,
+`lock_aspect_ratio: false`, instant entrance and exit. If the range shows the camera fullscreen
+(no screen layer, no custom layout), a pinned-camera layout is added as well so the overlay never
+covers the presenter's face; on a non-landscape canvas it is skipped with a warning.
 
-Long timelines are **chunked**: `analyzeRetakes` splits the segment list into overlapping windows (~36 owned segments + ~14 context each side, concurrency-capped, owner-disjoint merge), turning one giant unreliable call into many small reliable ones. This took the 412-segment eval from timeout to 97% beat-level F1 (`npm run eval:retakes`).
+**Remove and re-place.** Delete the layout (tolerating not found), delete the take or overlay,
+re-add every recorded replaced layout and control with its properties and range, verify, commit.
+Re-placing a new version does the removal in the same transaction as the new placement. Before
+that, the recorded take is confirmed at `placed.start_ms`; if narration moved because of a cut in
+between, the range is re-resolved from the first and last word text and printed before anything
+is deleted.
 
-## Retakes pipeline
+Verification frames come from `inspect_timeline` at the start, middle and end of the range and
+are copied next to the job as `frames/vN-start.jpg|mid|end`; the placed notice prints their
+paths and the elapsed time.
 
-1. **Transcribe the source, not the timeline.** Premiere's own transcript is not scriptable, so the server transcribes the **source media file** once (ElevenLabs Scribe) and maps words onto the timeline. This matches how Premiere TBE/Descript/TimeBolt work: one accurate transcription, cached, survives any re-edit.
-2. **Timeline-scoped billing.** Only the source ranges actually used on the timeline are sent to Scribe (`transcribeSourceRanges`): used ranges merge into a few padded "islands", and a union cache (`.cache/transcripts/`) means a reload after cutting never re-bills already-transcribed audio.
-3. **Sentence-level, clip-bounded segmentation** (`review.js buildReview`): the transcript is sliced to each clip's window and split into ONE SEGMENT PER SENTENCE (sentence enders, pauses >= 0.5 s, and cut-off words with a trailing dash, so a line restarted three times with no pause still lists as three attempts), then the clip's `[sourceIn, sourceOut]` is tiled with no gaps, so a segment never crosses a cut. The tiles are the REVIEW unit only; where a cut lands is decided at apply time (step 5). Word-empty clips become one cuttable "(no speech)" segment and are auto-marked Cut deterministically (never delegated to the AI).
-4. **Reconcile against the live timeline** (`review.js reconcile`): every segment carries its **source range** (media path + source in/out + track), and before any apply the server re-locates each segment on the live timeline (`present` / `partial` / `absent`), keyed on media+track+source-overlap, never on clip ids (they renumber after razors) and never on stored timeline frames (they go stale after the first ripple). Razoring stale frames is the classic "razor everywhere, delete nothing" failure.
-5. **Apply plans its cut edges in the quiet between words** (`cutplan.js`): a transcript word's start timestamp sits a median ~50 ms (90th percentile ~240 ms) after the real onset and its end ~180 ms before the voice stops, so cutting on a tile edge clips the first letters of the kept sentence. `planCutSpans` turns each run of Cut tiles into one source-second span whose edges are found on the source file's loudness envelope (the same `levels.js` data the silence tab scans): the kept neighbour receives a margin of air ahead of its real onset / behind its real word end; continuous speech falls back to the lowest-energy window between the words; no envelope falls back to conservative timestamp pads. "Remove pauses longer than N ms" (every real pause inside the kept speech, between words too) and "Remove fillers" produce spans through the same edge finder, everything merges, and `mapSpansToTimeline` lands the spans on the live clips (media + track + source overlap). Then the batched delete runs (see fast apply below) and **verification reads the timeline back** (clip count + duration); host call counts are not trusted.
+## Cuts: targeted trims
 
-## Silence pipeline (no transcription, no API key)
+Borumi keeps narration (camera + microphone) and each screen layer in separate edit sets, with
+overlays and layouts as their own. A `trim_timeline` call with no target is refused when the
+ranges overlap independent sets, and a targeted call ripples only its set. Layouts follow the
+screen layer and overlays ripple as one group, so applying one range to every set double-cuts
+layouts. The plugin therefore trims narration first, then each screen layer active in the range,
+then one overlay layer if any overlay exists, all ranges in one call per set in original
+coordinates, re-reading after each call and comparing every layer against the expected
+positions (`t - removedBefore(t)`); `layout` is trimmed only when one still sits at its old
+position; any mismatch aborts the transaction. `--narration-only` skips the non-narration sets.
+Edges snap into the nearest `detect_speech` silence gap within 400 ms, else 250 ms lead and 300
+ms tail pads. After a trim that moved narration under earlier chapter cards, `chapters.mjs shift`
+re-times `chapters.json` and the cards are re-placed.
 
-`server/audio/levels.js` extracts a per-window **peak envelope** with ffmpeg, **normalized to the recording's own peak** and floored at -60 dB. Normalization is what makes threshold values portable across recordings (a "-45" on a quietly-recorded take then behaves like "-45" in AutoCut/TimeBolt, which meter the same way). `detectSilences` applies the threshold plus the pacing knobs (min silence length, keep-talk, margins); keep-talk demotion is unconditional on length, matching industry semantics. The panel renders the envelope and recomputes zones instantly client-side with mirrored logic (`test/silence.js` pins server and panel mirrors together).
+## Deliverable folders
 
-## Fast apply: the three-rung ladder
+`<dirname(project.path)>/<project name> Agent/` next to the `.bmprojbundle`:
 
-Applying hundreds of cuts in place is slow (each ripple shifts every downstream clip) and Premiere's per-track razor makes it O(ranges x clips). `applyRangesBatched` (`silences.js`) picks the fastest safe path:
+```
+animations/<jobId>/   job.json, log.jsonl, brief.md, history/Scene.tsx snapshots, <jobId>-v<N>.mp4|.mov,
+                      frames/, borumi/ receipts
+exports/              /borumi:export outputs (and the 720p phone copy)
+chapters/             chapters.json, youtube-chapters.txt
+receipts/             raw tool responses from multi-call commands, the full silence lists
+```
 
-1. **Round-trip XML** (`roundtrip.js`, default for ripple applies with >= `EDITAGENT_REBUILD_MIN` cuts): export the sequence as Premiere's own FCP7 XML, surgically edit **timing only** (split/trim/delete clip items, recompute ticks, fix links, shift markers) while passing every node we don't understand through verbatim, and reimport as a new `<name> - tightened` sequence. Effects, transforms, and audio levels that FCP7 XML can carry survive. Verified live 2026-07-03.
-2. **Generated rebuild** (`rebuild.js`): if the round-trip fails, build a bare FCP7 XML sequence from our own bookkeeping (A/V sync by construction, BigInt-exact frame math). Drops clip effects; refuses timelines it cannot represent (titles, speed changes) by throwing.
-3. **Batched razor** (in-place fallback, and the path for lift/mute or small applies): razor every edge first (razors never shift), lift-delete pieces per range, then close gaps per track with self-verifying emptiness checks, chunked ~50 ranges per host call for progress and cancel.
+`scripts/lib/paths.mjs` refuses to create anything when the bundle does not exist at call time,
+and never creates a directory under `/Volumes/<x>` unless it is a mount point, so an unmounted
+external drive produces "mount the drive first" instead of a folder on the boot disk.
+`BORUMI_AGENT_OUT` overrides the parent directory; `~/.borumi-agent/cache/` holds inspect-frame
+copies and other cache.
 
-Rungs 1-2 produce a **new** sequence (undo = delete it); rung 3 edits in place under an undo snapshot (`undo.js`, Cmd+Z friendly).
+## What was dropped from upstream, and why
+
+| Upstream OpenCutAgent piece | Fate | Why |
+|---|---|---|
+| CEP panel (`cep-panel/`), design system, browser QA | dropped | Borumi is the UI; the plugin runs in a terminal session. |
+| Node MCP server, WebSocket bridge on 3001, auto-start, port file | dropped | Borumi ships its own MCP server; the session calls it directly. |
+| `premiere.jsx` host script, ExtendScript try-ladders, tick math, relinking | dropped | No Premiere. Borumi's segments carry ids and ms. |
+| ElevenLabs Scribe transcription and its cache | dropped | `get_transcript` returns word and block timings from Borumi's local engine. |
+| Loudness meter, silence threshold UI, mirrored detector | detector kept as pacing presets | `detect_speech` finds silences; the presets map to min and keep values. |
+| Cut-edge planner on the loudness envelope (`cutplan.js`) | replaced by silence-gap snapping + pads | Media files are not reachable through the MCP; `detect_speech` gaps are. Pads stay conservative until Borumi's word offsets are measured. |
+| XML round-trip and generated rebuild, batched razor, undo snapshots | dropped | `trim_timeline` with multi-range batches and ripple is the apply path; there is no undo after commit, so preview-then-commit is the safety net. |
+| Headless `claude -p` oracle and the cloud proxy | dropped | The session is the judge; `--delegate` uses a subagent. No nested `claude -p`. |
+| Sequence markers (Soft Apply) | dropped | Borumi has no comparable recolorable annotation; retakes are previewed as a table instead. |
+| Animation chat, `chat.json`, panel web-access toggles | replaced by `say` turns and `log.jsonl` | The chat is the Claude Code session. |
+| Premiere frame export for frame-aware jobs | replaced by `inspect_timeline` | Borumi renders the composite at canvas size on request. |
+| All-intra transcode of h264 renders | off by default | Borumi decoded the long-GOP mp4 fine and re-encodes on export; `BORUMI_AGENT_ALL_INTRA=1` re-enables it. |
+| `install.sh` / `install.ps1` | `scripts/doctor.sh` | Same `[ok]/[did]/[fix]/[note]` contract, macOS only, no system installs. |
+| Retake rubric, sentence segmentation, interval math, duration formatting, the animation kit | kept | Editor-agnostic and already paid for. |
 
 ## Design rules that keep this maintainable
 
-- **All Premiere access in one file** (`premiere.jsx`). A future UXP port touches one file.
-- **Pure functions for all edit math** (interval merging, frame conversion, XML surgery, cut-list building, marker planning) so `server/test/` covers them without Premiere. `npm test` needs no Premiere, no ffmpeg, no API key.
-- **The panel never decides; the server never draws.** State flows server to panel; user intent flows panel to server as RPCs.
-- **Trust nothing stale.** Clip ids renumber, stored frames drift, "applied N/N" counts calls. Reconcile from source ranges and verify by re-reading the timeline.
-- **Version-sensitive host APIs get try-ladders** and a Phase-0 probe (`ppro_run_script`) before first live use.
-- **Lessons are recorded** in `docs/LESSONS.md` (full dated history) with the distilled rules in `CLAUDE.md`: every dead end found the hard way is written down so no one re-discovers it.
+- **Borumi is the only writer, and small transactions are the unit of approval.** One result per
+  transaction; the change summary is what the user approves.
+- **Pure functions for all edit math**, tested against real Borumi responses, so `node --test`
+  needs neither Borumi nor ffmpeg.
+- **Trust nothing stale.** Ids are re-observed, hashes re-read, positions compared after every
+  trim, placements verified with `get_timeline` after commit.
+- **Never delete recorded content to place an animation.** Layers are added, layouts point at
+  them, and whatever a placement displaced is recorded so `remove` can restore it.
+- **Long work detaches and is polled.** Nothing a skill runs may need more than one Bash call's
+  600 s.
+- **Lessons are recorded** in `docs/LESSONS.md` with the distilled rules in `CLAUDE.md`, and
+  every verified Borumi behaviour lands in the cookbook with its exact JSON.

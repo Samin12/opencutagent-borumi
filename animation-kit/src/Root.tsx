@@ -4,10 +4,11 @@ import { Composition } from "remotion";
 import { jobs } from "./jobs/manifest";
 
 /**
- * Every registered composition is an animation job scaffolded by the
- * OpenCutAgent server (see src/jobs/manifest.ts). Dimensions, fps and duration
- * come from the Premiere sequence and the selected timeline range — they are
- * fixed per job and must not be changed by hand.
+ * Every registered composition is an animation job scaffolded by the borumi
+ * plugin's job.mjs (see src/jobs/manifest.ts). Width and height come from the
+ * Borumi project canvas, fps is always 30 (the kit's SEC() assumes it and
+ * Borumi conforms the imported clip), and durationInFrames comes from the
+ * selected range. They are fixed per job and must not be changed by hand.
  */
 export const RemotionRoot: React.FC = () => (
   <>

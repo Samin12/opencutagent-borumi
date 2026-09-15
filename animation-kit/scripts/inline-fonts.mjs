@@ -8,7 +8,7 @@
 // concurrent 4K tabs, or an offline machine reaching fonts.gstatic.com) trips
 // the frame timeout and kills the whole render thousands of frames in.
 // A data: URI cannot stall.
-import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
+import { readFileSync, writeFileSync, mkdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -35,6 +35,7 @@ const FONTS = [
 for (const f of FONTS) {
   const srcDir = join(root, f.srcDir ?? join("public", "fonts"));
   const outDir = join(root, f.outDir ?? join("src", "theme", "fontdata"));
+  if (!existsSync(join(srcDir, f.file))) { console.log(`${f.module}: skipped (${join(srcDir, f.file)} not found)`); continue; }
   mkdirSync(outDir, { recursive: true });
   const b64 = readFileSync(join(srcDir, f.file)).toString("base64");
   writeFileSync(

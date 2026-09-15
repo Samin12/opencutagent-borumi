@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Inspect"
+  short_description: "read the open Borumi project without changing it: the scenes table with layers per edit span, one scene's segm"
+  default_prompt: "Use $borumi-inspect to show me the scenes, layers and transcript of my open Borumi project."

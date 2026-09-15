@@ -1,0 +1,4 @@
+interface:
+  display_name: "Borumi Retakes"
+  short_description: "find the repeated takes, false starts and duplicate lines in a scene of the open Borumi project, judge keep or"
+  default_prompt: "Use $borumi-retakes to find my repeated takes and false starts in scene 2 and cut all but the best pass."
