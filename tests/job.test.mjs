@@ -619,6 +619,19 @@ test("CLI end to end: create, signal, detached render + wait, placed, refs, list
     assert.equal(r.code, 1);
     const logText = readFileSync(join(c.outDir, "log.jsonl"), "utf8");
     assert.ok(logText.includes('"kind":"placed"') && logText.includes("verification frames viewed"));
+    // unplaced: a committed remove clears the record but keeps it as lastPlaced
+    r = run(["unplaced", c.jobId, "--commit-id", "6d70"]);
+    assert.equal(r.code, 0, r.stderr);
+    assert.equal(r.json.placed, null);
+    assert.equal(r.json.removed.commit_id, "6c56");
+    const afterRemove = JSON.parse(readFileSync(join(c.outDir, "job.json"), "utf8"));
+    assert.equal(afterRemove.placed, null);
+    assert.equal(afterRemove.lastPlaced.take_segment_id, "aaaa");
+    assert.ok(readFileSync(join(c.outDir, "log.jsonl"), "utf8").includes("Removed v1 from the project (commit 6d70)"));
+    r = run(["list", "--project-path", bundle]);
+    assert.equal(r.json[0].placed, null);
+    r = run(["placed", c.jobId, "--json", JSON.stringify({ mode: "behind", media_id: "87d7", layer_id: "screen_2", take_segment_id: "aaaa", layout_segment_id: "bbbb", start_ms: 3820, end_ms: 13686, commit_id: "6c56" })]);
+    assert.equal(r.code, 0, r.stderr);
     writeFileSync(join(tmp, "my shot (1).png"), "png-bytes");
     r = run(["refs", c.jobId, "--add", join(tmp, "my shot (1).png"), "--add", join(tmp, "my shot (1).png")]);
     assert.equal(r.code, 0, r.stderr);

@@ -607,6 +607,18 @@ export async function main(argv = process.argv.slice(2)) {
         print({ jobId: job.id, placed: job.placed, importedMediaIds: job.importedMediaIds });
         return 0;
       }
+      case "unplaced": {
+        // After a remove committed: clear the placed record (kept as lastPlaced for the log/history).
+        needJob();
+        const was = job.placed || null;
+        job.lastPlaced = was || job.lastPlaced || null;
+        job.placed = null;
+        job.replaced = null;
+        saveJob(job);
+        appendLog(job, { kind: "note", text: was ? `Removed v${was.version} from the project${args["commit-id"] ? ` (commit ${args["commit-id"]})` : ""}.` : "Unplaced: no placement was recorded.", removed: was, commit_id: args["commit-id"] || null });
+        print({ jobId: job.id, placed: null, removed: was });
+        return 0;
+      }
       case "replaced": {
         needJob();
         if (!args.json) throw new Error("replaced needs --json '{...}'.");
@@ -657,7 +669,7 @@ export async function main(argv = process.argv.slice(2)) {
       }
       case undefined:
       case "help": {
-        process.stderr.write("job.mjs create|manifest|signal|render|wait|status|typecheck|still|anchors|sheet|probe|list|show|current|set-current|placed|replaced|log|refs|discard (see DESIGN.md 9.8)\n");
+        process.stderr.write("job.mjs create|manifest|signal|render|wait|status|typecheck|still|anchors|sheet|probe|list|show|current|set-current|placed|unplaced|replaced|log|refs|discard (see docs/DESIGN.md 9.8)\n");
         return cmd ? 0 : 2;
       }
       default:

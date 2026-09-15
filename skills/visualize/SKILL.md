@@ -98,7 +98,7 @@ Read, in this order: `<briefPath>`, `<kitDir>/GUIDE.md`, `<kitDir>/styles/<style
 - `render`: re-render the current `render.json` version without a design turn (refused when nothing is pending; `--force` re-renders anyway), then the sheet and the one question.
 - `again`: redo the last design instruction as a new version.
 - `list`: `job.mjs list --project-path P`, printed as a table (title, range, mode, style, version, placed). `show`: `job.mjs show <jobId>` summarized.
-- `remove`: `placement.mjs plan --action remove` in one transaction: delete the layout and the take (or the overlay and any camera layout the job added), re-add `replaced_layouts` and `replaced_controls` with their recorded properties and ranges, verify, commit with a concrete summary. Missing pieces are tolerated and reported. Recorded content is never touched.
+- `remove`: `placement.mjs plan --action remove` in one transaction: delete the layout and the take (or the overlay and any camera layout the job added), re-add `replaced_layouts` and `replaced_controls` with their recorded properties and ranges, verify, commit with a concrete summary, then `node $BORUMI_PLUGIN_ROOT/scripts/job.mjs unplaced <jobId> --commit-id <id>` so the job no longer claims a placement (`place.py --action remove` does this itself). Missing pieces are tolerated and reported. Recorded content is never touched.
 - `replace`: `remove` plus place the latest rendered version (`--action replace`).
 - `discard`: `remove` when placed, then `job.mjs discard <jobId>` (kit job and manifest entry gone; renders and the deliverable folder stay).
 

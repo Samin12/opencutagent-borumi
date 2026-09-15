@@ -18,7 +18,8 @@ commit (or abort with --no-commit) and re-read the committed project. Any error 
 The commit here does NOT go through Claude Code's permission prompt: inside Claude Code the
 visualize skill executes the plan itself through the plugin's MCP tools. Use this script from Codex,
 cron or batch runs after the user approved the placement in chat. Output: JSON on stdout; the plan,
-the timeline reads and the verify result are written next to the job (receipts).
+the timeline reads and the verify result are written next to the job (receipts). After a commit the
+placement is recorded in job.json (`job.mjs placed` / `job.mjs unplaced`), so nothing else is needed.
 """
 import argparse
 import json
@@ -87,7 +88,7 @@ def run_node(args):
     except Exception:
         data = {"ok": False, "error": (r.stdout or "")[-400:] + (r.stderr or "")[-400:]}
     if r.returncode not in (0, 2):
-        raise BorumiError("placement.mjs", f"exit {r.returncode}: {(r.stderr or '')[-400:]}")
+        raise BorumiError(os.path.basename(args[0]) if args else "node", f"exit {r.returncode}: {(r.stderr or '')[-400:]}")
     return data
 
 
@@ -261,6 +262,18 @@ def main():
                     gone = not any(s["id"] in (prev.get("take_segment_id"), prev.get("overlay_segment_id")) for L in tl2.get("layers", []) for s in L.get("segments", []))
                     result["confirmed"] = gone
                     result["placed"] = None
+                # Record the outcome in job.json so a later remove/replace (from any host) starts from the truth.
+                job_id = job.get("id") or job.get("jobId")
+                if job_id:
+                    if a.action in ("place", "replace") and result.get("placed"):
+                        rec = run_node([os.path.join(HERE, "job.mjs"), "placed", job_id, "--json", json.dumps(result["placed"])])
+                        result["recorded"] = {"placed": rec.get("placed") if isinstance(rec, dict) else rec}
+                    elif a.action == "remove":
+                        rec = run_node([os.path.join(HERE, "job.mjs"), "unplaced", job_id, "--commit-id", str(c.get("commit_id") or "")])
+                        result["recorded"] = {"placed": None, "removed": rec.get("removed") if isinstance(rec, dict) else rec}
+                    if a.out is None:
+                        pass
+                    log(f"recorded in job.json: {json.dumps(result.get('recorded'))[:160]}")
                 result["ok"] = True
         except BorumiError as e:
             try:

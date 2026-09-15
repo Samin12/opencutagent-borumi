@@ -75,6 +75,7 @@ One transaction, in this order, each step tolerating "not found":
 2. Delete the take's video segment (behind) or the overlay segment (front), `expand_groups:false, ripple:false`. Deleting the only segment of `screen_N` removes that layer; that is expected.
 3. Re-add every `replaced_layouts` entry and every `replaced_controls` entry with its recorded `properties` and `[start_ms,end_ms]` (`add_segments`, one call per group, re-read between calls).
 4. Verify (`--action remove`): no segment with the render's media remains in `[A,B]`, the restored layouts are back, `duration_ms` unchanged. Commit with a concrete summary ("Remove animation v2 from Scene 3 and restore the previous layout."). Nothing changed: abort instead.
+5. Record it: `node $BORUMI_PLUGIN_ROOT/scripts/job.mjs unplaced <jobId> --commit-id <commit id>` clears `placed` (kept as `lastPlaced`). `scripts/place.py` runs this step itself after its commit, as it runs `job.mjs placed` after a place or replace.
 
 Recorded footage is never touched. The imported media stays in the bundle (the MCP cannot delete media); say so once.
 
