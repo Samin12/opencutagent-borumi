@@ -196,7 +196,7 @@ test("every references/ link points at a file that exists", () => {
 
 test("script calls match the plugin contracts", () => {
   const scripts = new Set(["job", "kit", "frames", "segments", "placement", "chapters", "check"]);
-  const jobSub = new Set(["create", "manifest", "signal", "render", "wait", "status", "typecheck", "still", "anchors", "sheet", "probe", "list", "show", "current", "set-current", "placed", "replaced", "log", "refs", "discard"]);
+  const jobSub = new Set(["create", "manifest", "signal", "render", "wait", "status", "typecheck", "still", "anchors", "sheet", "probe", "list", "show", "current", "set-current", "placed", "unplaced", "replaced", "log", "refs", "discard"]);
   for (const rel of OWNED) {
     const text = read(rel);
     // plugin scripts are invoked through the plugin root ($BORUMI_PLUGIN_ROOT, or ${CLAUDE_PLUGIN_ROOT} in Host notes);
