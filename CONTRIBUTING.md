@@ -156,3 +156,13 @@ A lesson written once is never re-learned the hard way.
   that pins the new behaviour, and a live run on a throwaway project before release.
 - Say in the description what ran live and what did not.
 - No em dashes in the diff.
+
+## Releasing a change to installed copies
+
+Claude Code updates a marketplace plugin only when the `version` in `.claude-plugin/plugin.json` changes (a new commit with the same version is reported as "already at the latest version"). So every push that users should receive bumps that version (and `package.json` to match), then on each machine:
+
+```bash
+claude plugin marketplace update samin-plugins && claude plugin update borumi@samin-plugins
+```
+
+Codex uses a plain clone, so `git -C ~/.codex/skills/borumi pull` (or `scripts/install-codex.sh --check` to confirm the links) is enough.

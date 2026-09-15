@@ -1,6 +1,6 @@
 {
   "name": "borumi",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Edit Borumi projects from Claude Code: visualize a scene with a rendered Remotion animation placed behind your camera or in front as an alpha overlay, cut ranges, remove silences and retakes, insert b-roll, add chapter cards and captions, export. Built on OpenCutAgent's animation kit and Borumi's own MCP.",
   "author": {
     "name": "Samin Yasar",
@@ -8,5 +8,12 @@
   },
   "repository": "https://github.com/Samin12/opencutagent-borumi",
   "license": "SEE LICENSE IN LICENSE",
-  "keywords": ["borumi", "video-editing", "remotion", "animation", "youtube", "mcp"]
+  "keywords": [
+    "borumi",
+    "video-editing",
+    "remotion",
+    "animation",
+    "youtube",
+    "mcp"
+  ]
 }
