@@ -1,4 +1,4 @@
-# Excalidraw style — design guide and living learnings
+# Excalidraw style: design guide and living learnings
 
 The aesthetic for this animation: **someone sketching an idea on a dark whiteboard.** Hand-drawn
 sketchy shapes that draw themselves on, Excalifont handwriting, a violet accent, everything on a

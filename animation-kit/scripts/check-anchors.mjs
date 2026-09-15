@@ -22,6 +22,8 @@
 // - from/to: rel seconds the drawing is VISIBLE (first frame to last frame).
 // - expectMotion: true when the region legitimately animates (a spinner, a
 //   scrolling list) so changes are reported but not failed.
+// - keepOut (frames-map.json, canvas ratios): the pinned-camera corner. An anchor whose
+//   rect overlaps it FAILs without sampling: nothing may be drawn where the camera sits.
 //
 // The server runs this same check before rendering; a FAIL comes back to you
 // as an automatic message, so run it yourself first.
@@ -52,6 +54,26 @@ export function parseAnchors(json, canvasW, canvasH) {
     anchors.push({ id, what: a.what ? String(a.what) : "", rect, from, to, expectMotion: !!a.expectMotion, words, drawIn, text: a.text != null ? String(a.text) : undefined });
   });
   return { anchors, errors };
+}
+
+/**
+ * The pinned-camera corner in canvas pixels, from frames-map.json `keepOut` (ratios of the canvas),
+ * or null when the job has no keep-out. A drawing anchored inside it would sit under (behind mode)
+ * or on top of (front mode) the presenter's camera, so the check fails it before sampling frames.
+ */
+export function keepOutRect(map) {
+  const k = map && map.keepOut;
+  const c = map && map.canvas;
+  if (!k || !c || !(c.width > 0) || !(c.height > 0)) return null;
+  const x = Number(k.x), y = Number(k.y), w = Number(k.w), h = Number(k.h);
+  if (![x, y, w, h].every(Number.isFinite) || w <= 0 || h <= 0) return null;
+  return { x: Math.round(x * c.width), y: Math.round(y * c.height), w: Math.round(w * c.width), h: Math.round(h * c.height) };
+}
+
+/** True when two {x,y,w,h} rects overlap by at least one pixel. */
+export function rectsOverlap(a, b) {
+  if (!a || !b) return false;
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
 
 /** The exported frames to sample for one anchor: the span plus one step each side. */
@@ -86,7 +108,14 @@ export function runAnchorCheck({ kitDir = process.cwd(), jobId, writeSheets = tr
   const ff = ffmpeg || map.ffmpeg || "ffmpeg";
   const sheetDir = join(kitDir, "public", "frames", jobId, "check");
   const results = [];
+  const keepOut = keepOutRect(map);
   for (const a of parsed.anchors) {
+    if (keepOut && rectsOverlap(a.rect, keepOut)) {
+      results.push({ ...a, verdict: "fail", changes: [], sheet: null, keepOut: true, notes: [
+        `the rect overlaps the pinned-camera corner (keepOut x${keepOut.x} y${keepOut.y} ${keepOut.w}x${keepOut.h}): the presenter covers this area, so move the drawing and its target out of the corner`,
+      ] });
+      continue;
+    }
     const samples = anchorSamples(frames, a.from, a.to, step);
     const size = regionThumbSize(a.rect);
     let regions;

@@ -1,4 +1,4 @@
-# n8n style — design guide and living learnings
+# n8n style: design guide and living learnings
 
 The aesthetic for this animation: **n8n sketching an idea on a dark whiteboard.** The same
 hand-drawn engine as the Excalidraw style (rough.js draw-on, Excalifont, dot-grid canvas), but
@@ -14,22 +14,22 @@ Import from the style package (path is relative to your job folder):
 import { n8n, SketchNode, SketchConnector, ChatScene, chatTiming, N8nLogo } from "../../../styles/n8n/src";
 ```
 
-- **`n8n`** — the theme. Use `n8n.color.*` INSTEAD of `tokens.color.*` for every color in this
+- **`n8n`**: the theme. Use `n8n.color.*` INSTEAD of `tokens.color.*` for every color in this
   style (it inherits fonts/sizes/stroke tiers from the engine tokens, so `n8n.fontSize.h2` etc.
   also work). Key colors: `accent` (pink `#EA4B71`), `activeGreen` (executed), the support set
   (`blue/orange/purple/purpleSoft/green/red`), `surface` for cards, `bg` for the canvas
   (pass `bg={n8n.color.bg}` to `<Canvas>` on solid jobs).
-- **`SketchNode`** — THE n8n node: sketchy tile, centered brand-colored dot (or `hollow` ring),
+- **`SketchNode`**: THE n8n node: sketchy tile, centered brand-colored dot (or `hollow` ring),
   name BELOW the tile, handles gated to appear with the body, optional `trigger` bolt.
   `activeDelay` turns on the "executed" green sketch border (no checkmark, that's n8n's real
   semantic). Props: `id x y title subtitle? accent? hollow? trigger? w? h? drawIn? activeDelay?`.
-- **`SketchConnector`** — hand-drawn bezier between node handles: draws neutral, loops a pink
+- **`SketchConnector`**: hand-drawn bezier between node handles: draws neutral, loops a pink
   data-pulse (keeps holds alive), turns green at `activeDelay`. Props:
   `id from to delay duration? activeDelay? pulse? label?`.
-- **`ChatScene`** — the n8n AI-builder chat opener (input box skeletons on, prompt types fast,
+- **`ChatScene`**: the n8n AI-builder chat opener (input box skeletons on, prompt types fast,
   "Building your workflow…" row). `chatTiming(prompt)` gives you its beat frames so downstream
   choreography can sync. Authored at 1920x1080 and self-scales to the composition width.
-- **`N8nLogo`** — the official logo. **Do NOT use it unless the user explicitly asks for the
+- **`N8nLogo`**: the official logo. **Do NOT use it unless the user explicitly asks for the
   logo**; the default is no logo/watermark anywhere.
 
 A minimal workflow build (node/edge tables + staggered delays + execute wave):
@@ -46,7 +46,7 @@ const NODES = [
 ## Non-negotiables
 1. **Hand-drawn, always.** Everything from the sketch primitives + the style components, with
    skeletons on: outline first, then body. If the user shows a screenshot of the real n8n app
-   (or any app), redraw the CONCEPT sketchy and simplified — structurally recognizable, never a
+   (or any app), redraw the CONCEPT sketchy and simplified, structurally recognizable, never a
    clone, no real integration logos (brand-colored dots instead).
 2. **Normalize colors to the n8n brand.** Subject/highlight = pink `n8n.color.accent`; neutrals =
    the ink grays; extra color-coding = the support palette (blue/orange/purple/green/red). Never

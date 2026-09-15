@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 
-// { file, module, name, note, srcDir?, outDir? } — srcDir/outDir default to the
+// { file, module, name, note, srcDir?, outDir? }: srcDir/outDir default to the
 // engine's public/fonts and src/theme/fontdata. Style packages keep their own
 // sources under styles/<id>/fonts and generate into styles/<id>/src/fontdata.
 const FONTS = [
